@@ -5,6 +5,9 @@ import pandas as pd
 import priority
 import ganttchart
 import random
+import copy
+import sys
+
 
 class FirstClass:
     def __init__(self, row_data):
@@ -41,25 +44,57 @@ class SecondClass():
                     setattr(self, key, value)
 
 
-    def split_if_needed(self):
-        # If weight is over 6000, create two new instances
-        if int(getattr(self,'予定数量(㎏)')) > 6000:
-            # Copy the instance's attributes and update the weight
-            attributes = self.__dict__.copy()
-            attributes['予定数量(㎏)'] = int(getattr(self,'予定数量(㎏)')) / 2
-            # print(SecondClass(**attributes))
-            # Create two new instances
-            # new_instance1 = SecondClass(**attributes)
-            # new_instance2 = SecondClass(**attributes)
-            new_instance1 = SecondClass(attributes)
-            new_instance2 = SecondClass(attributes)
+    # def split_if_needed(self):
+    #     # If weight is over 6000, create two new instances
+    #     if int(getattr(self,'予定数量(㎏)')) > 6000:
+    #         # Copy the instance's attributes and update the weight
+    #         attributes = self.__dict__.copy()
+    #         attributes['予定数量(㎏)'] = int(getattr(self,'予定数量(㎏)')) / 2
 
+    #         new_instance1 = SecondClass(attributes)
+    #         new_instance2 = SecondClass(attributes)
+    #         return new_instance1, new_instance2
+    #     # If not, return the instance itself
+    #     return self
+    
+    def split_if_needed(self,split_weight):
+        # Get the current weight and convert to int
+        weight = int(float(getattr(self, '予定数量(㎏)')))
 
+        # If weight is over 6000, split it
+        if weight > split_weight:
+            # Calculate the maximum weight per instance, which should be a multiple of 12 and not exceed 6000
+            max_weight_per_instance = split_weight
 
-            return new_instance1, new_instance2
+            # Find the largest multiple of 12 that is less than or equal to max_weight_per_instance
+            weight_per_instance = (max_weight_per_instance // 12) * 12
+
+            # Calculate the number of instances needed
+            num_instances = weight // weight_per_instance
+
+            # If there's a remainder, we need one more instance to cover the remaining weight
+            if weight % weight_per_instance != 0:
+                num_instances += 1
+
+            # Create the new instances
+            instances = []
+            for i in range(num_instances):
+                attributes = self.__dict__.copy()
+
+                if i == num_instances - 1:  # Last instance
+                    # Remaining weight for the last instance
+                    attributes['予定数量(㎏)'] = weight % weight_per_instance or weight_per_instance
+                else:
+                    attributes['予定数量(㎏)'] = weight_per_instance
+
+                new_instance = SecondClass(attributes)
+                instances.append(new_instance)
+
+            return instances
 
         # If not, return the instance itself
-        return self
+        return [self]
+
     
 def resetting_instances_attributes(objects_with_inherited_features):
         for eachobject in objects_with_inherited_features:
@@ -69,6 +104,7 @@ def resetting_instances_attributes(objects_with_inherited_features):
             setattr(eachobject,'end',None)
             setattr(eachobject,'pushed_forward',0)
             setattr(eachobject,'ko_remark',False)
+            setattr(eachobject,'break',0)
             if hasattr(eachobject, '順番'):
                 delattr(eachobject, '順番')
             if hasattr(eachobject, 'slot'):
@@ -95,8 +131,26 @@ def create_csv_from_objects(file_name, objects):
         writer.writeheader()
 
         for obj in objects:
+           
+            if hasattr(obj, 'KOスライス製品') and getattr(obj, 'KOスライス製品') =='○' and hasattr(obj, 'break') and getattr(obj, 'break') == 1:
+                # if hasattr(obj, 'break') and getattr(obj, 'break') == 1:
+                    # Write an empty line
+                writer.writerow({})
+                writer.writerow(obj.__dict__)
 
-            writer.writerow(obj.__dict__)
+                # else
+
+            else:
+
+                writer.writerow(obj.__dict__)
+                # Check if the 'break' attribute exists and is set to 1
+                if hasattr(obj, 'break') and getattr(obj, 'break') == 2 and hasattr(obj, 'KOスライス製品') and getattr(obj, 'KOスライス製品') =='○':
+                    # Write an empty line
+                    writer.writerow({})
+
+                if  hasattr(obj, 'break') and getattr(obj, 'break') == 1:
+                    # Write an empty line
+                    writer.writerow({})
 
 def additional_features(objects):
     if not objects:
@@ -141,9 +195,9 @@ def additional_features(objects):
         if 'ストレッチ' in getattr(eachobject,'特記事項'):
             setattr(eachobject,'納期_copy',getattr(eachobject,'納期_copy')- timedelta(days=7))
 
-        usablesat=[datetime(2023,4,22).date()]
+        # ==
        
-        if getattr(eachobject,'納期_copy').strftime('%A')=='Saturday' :#and getattr(eachobject,'納期_copy').date() not in usablesat:
+        if getattr(eachobject,'納期_copy').strftime('%A')=='Saturday' and getattr(eachobject,'繰上不可(×）')==None:#and getattr(eachobject,'納期_copy').date() not in usablesat:
             setattr(eachobject,'納期_copy',(getattr(eachobject,'納期_copy')- timedelta(days=1)))
 
         # if getattr(eachobject,'納期_copy').strftime('%A')=='Sunday':
@@ -152,6 +206,12 @@ def additional_features(objects):
 
         setattr(eachobject,'first',0)
         setattr(eachobject ,'last',0)
+        setattr(eachobject,'break',0)
+        setattr(eachobject,'kostarttime',0)
+        # setattr(eachobject,'long_break',0)
+
+        if not hasattr(eachobject,'updated_date'):
+            setattr(eachobject ,'updated_date',None)
         # print(eachobject.__dict__)
 
         if '最終' in getattr(eachobject,'(一般マーガリンのみ)区分'):
@@ -160,7 +220,7 @@ def additional_features(objects):
         if '初回' in getattr(eachobject,'(一般マーガリンのみ)区分'):
             setattr(eachobject,'first',1)        
 
-        if (getattr(eachobject,'FK流量_time')==0 and getattr(eachobject,'KO流量_time')==0 and getattr(eachobject,'MK流量_time')!=0) or int(getattr(eachobject,'予定数量(㎏)'))>=6000:
+        if (getattr(eachobject,'FK流量_time')==0 and getattr(eachobject,'KO流量_time')==0 and getattr(eachobject,'MK流量_time')!=0) or float(getattr(eachobject,'予定数量(㎏)'))>=6000:
             setattr(eachobject,'priority_MK',1)
         else:
             setattr(eachobject,'priority_MK',0)
@@ -299,6 +359,17 @@ def additional_features(objects):
             setattr(eachobject,'H','×')
 
 
+        if getattr(eachobject,'繰上不可(×）') is not None and getattr(eachobject,'繰上不可(×）')!='':
+            try:
+                advance_date=datetime.strptime(getattr(eachobject,'繰上不可(×）'),'%Y/%m/%d %H:%M:%S').date()
+                setattr(eachobject,'Advance_Date',advance_date)
+            except:
+                advance_date=datetime.strptime(getattr(eachobject,'繰上不可(×）'),'%Y-%m-%d %H:%M:%S').date()
+                setattr(eachobject,'Advance_Date',advance_date)
+
+        else:
+            setattr(eachobject,'Advance_Date',None)
+
 
 
 def create_objects_with_inherited_features(first_csv, second_csv):
@@ -344,35 +415,65 @@ def create_objects_with_inherited_features_new_instances(first_csv, second_csv):
 
 
 def manufacture_multiple_files(input_file):
-    objects_with_inherited_features = create_objects_with_inherited_features('master.csv', input_file)
-    # objects_with_inherited_features_previous = create_objects_with_inherited_features('master.csv', input_file)
-    # objects_with_inherited_features=[]
-    # newly_instance=[]
-    # for instance in objects_with_inherited_features_previous:
-    #     if int(getattr(instance,'予定数量(㎏)'))>6000:
-    #         instance1,instance2=instance.split_if_needed()
-    #         random_number = random.randint(1, 100)
-    #         setattr(instance1,'new_creation',random_number)
-    #         setattr(instance2,'new_creation',random_number)
-    #         newly_instance.append(instance1)
-    #         newly_instance.append(instance2)
+    # objects_with_inherited_features = create_objects_with_inherited_features('master.csv', input_file)
+    objects_with_inherited_features_previous = create_objects_with_inherited_features('master.csv', input_file)
+
+    # objects_with_inherited_features=objects_with_inherited_features_previous
 
 
+    objects_with_inherited_features=[]
+    newly_instance=[]
+    for instance in objects_with_inherited_features_previous:
+        if getattr(instance,'KOライン')=='限定':
+            split_weight=4800
+        elif getattr(instance,'FKライン')=='限定':
+            split_weight=5500
 
-    #     else:
-    #         setattr(instance,'new_creation',0)
-    #         objects_with_inherited_features.append(instance)
+        elif getattr(instance,'MKライン')=='限定':
+            split_weight=6000
+
+        elif (instance,'KOライン')=='○' and getattr(instance,'FKライン')=='○' and (instance,'MKライン')=='○' and getattr(instance,'予定数量(㎏)')>6000:
+            split_weight=4800
+
+        elif (instance,'KOライン')=='○' and getattr(instance,'FKライン')=='○'  and getattr(instance,'予定数量(㎏)')>5500:
+            split_weight=4800
+
+        elif getattr(instance,'FKライン')=='○' and (instance,'MKライン')=='○' and getattr(instance,'予定数量(㎏)')>6000:
+            split_weight=5500
+
+        elif getattr(instance,'KOライン')=='○' and (instance,'MKライン')=='○' and getattr(instance,'予定数量(㎏)')>6000:
+            split_weight=4800
+
+
+        else:
+            split_weight=6000
+
+
+        if int(getattr(instance,'予定数量(㎏)'))>split_weight:
+            instances=instance.split_if_needed(split_weight)
+            random_number = random.randint(1, 100)
+
+            for ele in instances:
+                setattr(ele,'new_creation',random_number)
+                newly_instance.append(ele)
+
+        else:
+            setattr(instance,'new_creation',0)
+            objects_with_inherited_features.append(instance)
 
     
 
-    # newly_instance=create_objects_with_inherited_features_new_instances('master.csv', newly_instance)
-    # for ele in newly_instance:
-    #     print(ele.__dict__)
-    
-    objects_with_inherited_features=objects_with_inherited_features#+newly_instance
+    newly_instance=create_objects_with_inherited_features_new_instances('master.csv', newly_instance)
+    for ele in newly_instance:
+        print(ele.__dict__)
+
+    objects_with_inherited_features=objects_with_inherited_features+newly_instance
+
 
 
     additional_features(objects_with_inherited_features)
+
+
     objects_with_inherited_features=sorted(objects_with_inherited_features,key=lambda obj:obj.納期_copy)
     for ele in objects_with_inherited_features:
         if not hasattr(ele, 'day'):
@@ -383,27 +484,126 @@ def manufacture_multiple_files(input_file):
 
 
 
-def main_function(file1,file2,start,end, holiday_from, holiday_to):
-    # file1='order_3月.csv'
-    # file2='sunday_product.csv'
-    
-    # file1='order_3月-4月.csv'
-    # file2 = 'Monday_product.csv'
-    # start = '03/01/2023'
-    # end = '04/30/2023'
+# def main_function(file1,file2,start,end, holiday_from, holiday_to):
+#     print(start,end)
+file1='order_data_2024_3_月.csv'
+file2='reorder_data_2024_3_月.csv'
 
-    # start = '04/5/2023'
-    # end = '04/17/2023'
+# file1='order_3月-4月.csv'
+# file2 = 'Monday_product.csv'
+start = '03/01/2024'
+end = '03/15/2024'
 
-    # saturdays=['04/08/2023','04/15/2023']
+# start = '04/5/2023'
+# end = '04/17/2023'
 
-    objects_with_inherited_features=manufacture_multiple_files(file1)
+# saturdays=['04/08/2023','04/15/2023']
+holiday_from=None
+holiday_to=None
+
+replanning_file_objects_listed=manufacture_multiple_files(file2)
+
+
+
+objects_with_inherited_features_deep_copy=manufacture_multiple_files(file1)
+
+
+# objects_with_inherited_features = copy.deepcopy(objects_with_inherited_features_deep_copy)
+# replanning_file_objects= copy.deepcopy(replanning_file_objects_listed)
+
+#those days on which request came
+unique_dates=sorted({getattr(ele, '依頼日') for ele in replanning_file_objects_listed})
+
+# print(unique_dates)
+# exit()
+
+compare_date=datetime.strptime(start, '%m/%d/%Y')
+unique_dates_to_use=[ele for ele in unique_dates if datetime.strptime(ele, '%Y-%m-%d') <= compare_date]
+print(type(compare_date))
+
+for ele in unique_dates_to_use:
+    print(type(ele)) 
+    print(ele)
+
+
+#making sure that the planning happens for the start date as well
+date_object = datetime.strptime(start, '%m/%d/%Y')
+# Reformat the date string to 'YYYY-MM-DD'
+formatted_date = date_object.strftime('%Y-%m-%d')
+
+if formatted_date not in unique_dates_to_use:
+    unique_dates_to_use.insert(0,formatted_date)
+
+
+for uni_date in unique_dates_to_use:
+    print(f'the unique date is {uni_date}')
+
+    objects_with_inherited_features = copy.deepcopy(objects_with_inherited_features_deep_copy)
+    replanning_file_objects= copy.deepcopy(replanning_file_objects_listed)
+
+    each_day_reorder=[ele for ele in replanning_file_objects if ele.依頼日<=uni_date]
+
+    if uni_date== formatted_date:
+        each_day_reorder=[]
+
+    print('now')
+
+    print([ele.品名 for ele in each_day_reorder] )
+
+    matched_data=[]
+
+    for reorder_data in each_day_reorder:
+        matching_record=[ele for ele in objects_with_inherited_features if getattr(ele,'納期_copy')==getattr(reorder_data,'納期_copy') 
+                         and getattr(ele,'品目コード')==getattr(reorder_data,'品目コード')]
+
+        print([ele.品名 for ele in matching_record])
+
+        for orders in matching_record:
+            if orders not in matched_data:
+                matched_data.append(orders)
+
+
+    #now remove those matched record
+    objects_with_inherited_features=[ele for ele in objects_with_inherited_features if ele not in matched_data]
+
+    #change the nouki of  reorder data
+    for reorder in each_day_reorder:
+        print(type(reorder.updated_date))
+        # print('the dict is:')
+        # print(reorder.__dict__)
+        if reorder.updated_date:
+            print(reorder.品名)
+            print('previous date')
+            print(reorder.納期_copy)
+            print('the updated date')
+            print(reorder.updated_date)
+            setattr(reorder,'納期_copy',datetime.strptime(getattr(reorder,'updated_date'),'%Y%m%d'))#reorder.updated_date
+
+            
+
+            print('chaged date')
+            print(reorder.納期_copy)
+
+    objects_with_inherited_features+= each_day_reorder
+
+    master_sunday_data=[ele for ele in objects_with_inherited_features if ele.品名.startswith('ﾏﾙﾆｼﾛ')]#[0]
+    if len(master_sunday_data)>1:
+        master_sunday_data=[master_sunday_data[0]]
+    print(file2)
+
     objects_with_inherited_features=[ele for ele in objects_with_inherited_features if not ele.品名.startswith('ﾏﾙﾆｼﾛ')]
-    master_sunday_data=manufacture_multiple_files(file2)
+
+    #ﾏﾙﾆｼﾛ is the product you want to produce every monday either it is in order data or not
+    # master_sunday_data=manufacture_multiple_files(file2)
+
+    # master_sunday_data=file2
     create_csv_from_objects('output.csv', objects_with_inherited_features)
 
     # dat=pd.date_range(start='03/05/2023', end='04/10/2023')
+    # print(objects_with_inherited_features)
     dat=pd.date_range(start, end)
+    # print('the date is:::')
+    # print(dat)
 
     # dat2=pd.date_range('03/29/2023','04/03/2023')
 
@@ -413,7 +613,7 @@ def main_function(file1,file2,start,end, holiday_from, holiday_to):
         dat2 = pd.date_range(start='1900-01-01', periods=0)
 
     # dat2=pd.date_range(holiday_from,holiday_to)
-    
+
 
     #weekwise planning
     # dater=[datetime(2023,4,10),datetime(2023,4,17)]
@@ -432,32 +632,34 @@ def main_function(file1,file2,start,end, holiday_from, holiday_to):
         if days.day_name()=='Saturday' and days not in dat2:
             list_of_saturdays.append(days)
 
-    import sys
-    import copy
+
     length_non_used_data = sys.maxsize
 
     MK_LIST2,FK_LIST2,KO_LIST2=[],[],[]
     all_inherited_features=copy.deepcopy(objects_with_inherited_features)
 
+
     for each_saturday in list_of_saturdays:
 
-        
+        print(each_saturday)
         objects_with_inherited_features=copy.deepcopy(all_inherited_features)
-
-
 
         dates=[]
         MK_LIST1,FK_LIST1,KO_LIST1=[],[],[]
-      
+
+        # dat=[ele for ele in dat if ele not in used_dates]
         for ele in dat:
             if  ele.day_name()!='Saturday' and ele not in dat2:#ele.day_name()!='Sunday' and
                 dates.append(ele)
 
-            if ele.day_name()=='Saturday':
-                # if ele.date()==datetime(2023,4,22).date() or ele.date()==datetime(2023,4,15).date():
-                #if ele.date()==datetime(2023,4,15).date():
-                if ele.date()==each_saturday.date():#datetime(2023,4,15).date():
+            if ele.day_name()=='Saturday' or ele==dat[-1]:
+                
+                #Inclusion of saturday
+                if ele.date()==each_saturday.date():
                     dates.append(ele)
+                    print()
+
+                # used_dates= used_dates+[ele for ele in dates]
 
                 optimizer_list=[0,1,2,3,4,5,6,7,8]
                 least_non_used_data_list=[]
@@ -515,29 +717,47 @@ def main_function(file1,file2,start,end, holiday_from, holiday_to):
 
                 objects_with_inherited_features=[ele for ele in objects_with_inherited_features if getattr(ele,'get_used')==0]
                 dates=[]
-            print(f'the dates at the end is :{dates}')
+            # print(f'the dates at the end is :{dates}')
 
         if len(non_used_data)<=length_non_used_data:
 
             length_non_used_data=len(non_used_data)
+            
             arg='planning'
-            MK_LIST1=sorted(MK_LIST1, key=lambda ele: (ele.生産日, ele.順番))
-            FK_LIST1=sorted(FK_LIST1, key=lambda ele: (ele.生産日, ele.順番))
-            KO_LIST1=sorted(KO_LIST1, key=lambda ele: (ele.生産日, ele.順番))
+            # MK_LIST1=sorted(MK_LIST1, key=lambda ele: (ele.生産日, ele.順番))
+            # FK_LIST1=sorted(FK_LIST1, key=lambda ele: (ele.生産日, ele.順番))
+            # KO_LIST1=sorted(KO_LIST1, key=lambda ele: (ele.生産日, ele.順番))
 
-            create_csv_from_objects(f'MK_{arg}.csv', MK_LIST1)
-            create_csv_from_objects(f'FK_{arg}.csv', FK_LIST1)
-            create_csv_from_objects(f'KO_{arg}.csv', KO_LIST1)
-            create_csv_from_objects(f'unused_data_{arg}.csv', non_used_data)
+            if uni_date!= formatted_date:
+                create_csv_from_objects(f'MK_{arg}_{uni_date}.csv', MK_LIST1)
+                create_csv_from_objects(f'FK_{arg}_{uni_date}.csv', FK_LIST1)
+                create_csv_from_objects(f'KO_{arg}_{uni_date}.csv', KO_LIST1)
+                create_csv_from_objects(f'unused_data_{arg}_{uni_date}.csv', non_used_data)
+                
+            else:
+                create_csv_from_objects(f'MK_{arg}.csv', MK_LIST1)
+                create_csv_from_objects(f'FK_{arg}.csv', FK_LIST1)
+                create_csv_from_objects(f'KO_{arg}.csv', KO_LIST1)
+                create_csv_from_objects(f'unused_data_{arg}.csv', non_used_data)
 
             print(least_non_used_data_list)
-            print(f'the optimization value used was: {optimization_value}')
+            # print(f'the optimization value used was: {optimization_value}')
 
             MK_LIST2,FK_LIST2,KO_LIST2 = copy.deepcopy(MK_LIST1),copy.deepcopy(FK_LIST1),copy.deepcopy(KO_LIST1) 
 
+            
+
 
     if len(MK_LIST2) or len(FK_LIST2) or len(KO_LIST2):
+
         ganttchart.ganttchart_creator(MK_LIST2,FK_LIST2,KO_LIST2)
+        # objects_with_inherited_features=MK_LIST2+FK_LIST2+KO_LIST2+non_used_data
+
+        # for ele in MK_LIST2:
+        #     if ele not in total_elements:
+        #         total_elements.append(ele)
+
+        
 
 
 

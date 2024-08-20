@@ -32,7 +32,7 @@ class UserInterface:
         self.file1_entry = tk.Entry(master, width=50)
         self.file1_button = tk.Button(master, text="Browse", command=self.browse_file1, width=10, bg='steelblue', fg='white', activebackground='dodgerblue', relief=tk.RAISED)
 
-        self.file2_label = tk.Label(master, text="日曜日優先受注:", font=custom_font, bg='lightblue', fg='black')
+        self.file2_label = tk.Label(master, text="受注_reorder:", font=custom_font, bg='lightblue', fg='black')
         self.file2_entry = tk.Entry(master, width=50)
         self.file2_button = tk.Button(master, text="Browse", command=self.browse_file2, width=10, bg='steelblue', fg='white', activebackground='dodgerblue', relief=tk.RAISED)
 
