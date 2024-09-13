@@ -195,10 +195,27 @@ def additional_features(objects):
         if 'ストレッチ' in getattr(eachobject,'特記事項'):
             setattr(eachobject,'納期_copy',getattr(eachobject,'納期_copy')- timedelta(days=7))
 
+        # abc=False
+
+        # if getattr(eachobject,'納期_copy').strftime('%A')=='Saturday' and getattr(eachobject,'品名').startswith('ﾌﾟﾚﾐｱﾑｴ-ｽ-3'):
+        #     print('premium')
+        #     print(getattr(eachobject,'繰上不可(×）'))
+            
+        #     print(getattr(eachobject,'納期_copy'))
+            
+        #     # exit()
+        #     abc=True
+
         # ==
-       
-        if getattr(eachobject,'納期_copy').strftime('%A')=='Saturday' and getattr(eachobject,'繰上不可(×）')==None:#and getattr(eachobject,'納期_copy').date() not in usablesat:
+        if getattr(eachobject,'納期_copy').strftime('%A')=='Saturday' and (getattr(eachobject,'繰上不可(×）')==None or getattr(eachobject,'繰上不可(×）')==''):#and getattr(eachobject,'納期_copy').date() not in usablesat:
             setattr(eachobject,'納期_copy',(getattr(eachobject,'納期_copy')- timedelta(days=1)))
+            # print('reached data changer')
+       
+        # if abc:
+        #     print('changed to')
+        #     print(getattr(eachobject,'納期_copy'))
+        #     exit()
+
 
         # if getattr(eachobject,'納期_copy').strftime('%A')=='Sunday':
         #     setattr(eachobject,'納期_copy',(getattr(eachobject,'納期_copy')- timedelta(days=2)))
@@ -498,12 +515,10 @@ end = '03/15/2024'
 # end = '04/17/2023'
 
 # saturdays=['04/08/2023','04/15/2023']
-holiday_from=None
-holiday_to=None
+holiday_from= None
+holiday_to= None
 
 replanning_file_objects_listed=manufacture_multiple_files(file2)
-
-
 
 objects_with_inherited_features_deep_copy=manufacture_multiple_files(file1)
 
@@ -541,14 +556,19 @@ for uni_date in unique_dates_to_use:
     objects_with_inherited_features = copy.deepcopy(objects_with_inherited_features_deep_copy)
     replanning_file_objects= copy.deepcopy(replanning_file_objects_listed)
 
+    #lets convert ﾌﾟﾚﾐｱﾑｴ-ｽ-3 into 一般マーガリン　and we will convert it back to プレミアムスタ once planning is done
+    #this is because thouh it is premium star but it needs to be manufactured with ippanmagarin or mk tokusyouhin
+    # for premium_ace in objects_with_inherited_features:
+    #     if getattr(premium_ace,'品名').startswith('ﾌﾟﾚﾐｱﾑｴ-ｽ-3'):
+    #         setattr(premium_ace,'一般マーガリン製品','○')
+    #         setattr(premium_ace,'プレミアムスター製品','×')
+
+    
+
     each_day_reorder=[ele for ele in replanning_file_objects if ele.依頼日<=uni_date]
 
     if uni_date== formatted_date:
         each_day_reorder=[]
-
-    print('now')
-
-    print([ele.品名 for ele in each_day_reorder] )
 
     matched_data=[]
 
@@ -569,8 +589,7 @@ for uni_date in unique_dates_to_use:
     #change the nouki of  reorder data
     for reorder in each_day_reorder:
         print(type(reorder.updated_date))
-        # print('the dict is:')
-        # print(reorder.__dict__)
+
         if reorder.updated_date:
             print(reorder.品名)
             print('previous date')
@@ -578,8 +597,6 @@ for uni_date in unique_dates_to_use:
             print('the updated date')
             print(reorder.updated_date)
             setattr(reorder,'納期_copy',datetime.strptime(getattr(reorder,'updated_date'),'%Y%m%d'))#reorder.updated_date
-
-            
 
             print('chaged date')
             print(reorder.納期_copy)
@@ -656,7 +673,7 @@ for uni_date in unique_dates_to_use:
                 
                 #Inclusion of saturday
                 if ele.date()==each_saturday.date():
-                    dates.append(ele)
+                    # dates.append(ele)
                     print()
 
                 # used_dates= used_dates+[ele for ele in dates]
@@ -727,6 +744,12 @@ for uni_date in unique_dates_to_use:
             # MK_LIST1=sorted(MK_LIST1, key=lambda ele: (ele.生産日, ele.順番))
             # FK_LIST1=sorted(FK_LIST1, key=lambda ele: (ele.生産日, ele.順番))
             # KO_LIST1=sorted(KO_LIST1, key=lambda ele: (ele.生産日, ele.順番))
+            # for premium_ace in objects_with_inherited_features:
+            #     if getattr(premium_ace,'品名').startswith('ﾌﾟﾚﾐｱﾑｴ-ｽ-3'):
+            #         setattr(premium_ace,'一般マーガリン製品','×')
+            #         setattr(premium_ace,'プレミアムスター製品','○')
+
+
 
             if uni_date!= formatted_date:
                 create_csv_from_objects(f'MK_{arg}_{uni_date}.csv', MK_LIST1)

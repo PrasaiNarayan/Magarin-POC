@@ -30,6 +30,9 @@ def plot_gantt(df):
     df.rename(columns={'納期_copy': '納期'}, inplace=True)
 
     num_weeks = math.ceil((end_date - start_date).days / 7)
+    # Ensure num_weeks is at least 1
+    num_weeks = max(num_weeks, 1)
+    
     df.sort_values(["Task", "Start"], inplace=True)
     weeks = [start_date + timedelta(weeks=week) for week in range(num_weeks+1)]
     df['Week'] = pd.cut(df['Start'], bins=pd.to_datetime(weeks), labels=[f"Week {i+1}" for i in range(num_weeks)], include_lowest=True)

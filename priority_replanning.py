@@ -991,7 +991,7 @@ def added_time(KO_LIST,prefixes_with_two_hrs,ele,KO):
 #special KO line functions ends
 
 
-def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,dat2=None,arg=None):
+def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see_future,dat2=None,arg=None):
     #objects_with_inherited_features,dates,master_sunday_data,optimization_value,see_future=14,dat2=dat2,arg='planning'
     
     first_time=0
@@ -1003,26 +1003,18 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
     
     Magarin=False
   
-                            
     for elements in dates:
-        # print(f"{elements}")
+
         ko_slicing=False
-        
-        
-        
         if elements.day_name()!='Sunday':
             cleaning_time=20
             MK=Line_select('MK',elements,cleaning_time,Magarin=False)
             FK=Line_select('FK',elements,cleaning_time,Magarin=False)
             MK_line_total_time,FK_line_total_time=960,960
-            
-            #KO_line_total_time=1320
-            
 
         if elements.day_name()=='Sunday' or first_time==0:
             cleaning_time=60
-            KO=Line_select('KO',elements,cleaning_time,Magarin=False)
-            
+            KO=Line_select('KO',elements,cleaning_time,Magarin=False)            
             counter_type_KO=1
             ko_list=[]
             Magarin=False
@@ -1030,12 +1022,8 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
 
         if dat2 is not None and len(dat2)>0 and  elements==dat2[-1]+timedelta(days=1):
             cleaning_time=60
-            # print(f"the dat2 is {dat2}")
-
             KO=Line_select('KO',elements,cleaning_time,Magarin=False)
             Magarin=False
-            # print(KO.start_time)
-
             counter_type_KO=1
             ko_list=[]
 
@@ -1044,44 +1032,42 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
             Magarin=True
             cleaning_time=60
             KO=Line_select('KO',elements,cleaning_time,Magarin=True)
-            KO_line_total_time=800#840
+            KO_line_total_time=800
             MK_line_total_time,FK_line_total_time=800,800
 
-        #if KO.start_time.day_name()==KO.end_time.day_name():
-        add_day=7
+     
         if elements.day_name()=='Sunday':
             see_future1=see_future-0
-            add_day=add_day-0
+        
 
         elif elements.day_name()=='Monday':
             see_future1=see_future-1
-            add_day=add_day-1
+           
         
         elif elements.day_name()=='Tuesday':
             see_future1=see_future-2
-            add_day=add_day-2
+            
 
         elif elements.day_name()=='Wednesday':
             see_future1=see_future-3
-            add_day=add_day-3
+            
 
         elif elements.day_name()=='Thursday':
             see_future1=see_future-4
-            add_day=add_day-4
+            
             Magarin=True
         
         elif elements.day_name()=='Friday':
             see_future1=see_future-5
-            add_day=add_day-5
+            
             Magarin=True
 
         elif elements.day_name()=='Saturday':
             see_future1=see_future-6
-            add_day=add_day-6
+            
 
 
         start_time=pd.to_datetime(elements)
-        #print(f'the start time :{start_time}')
         today_data=[]
         future_data=[]
         far_future1=[]
@@ -1095,32 +1081,20 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
         # Extract the month and day from the last date
         last_month = last_date.month
         last_day = last_date.day
-        # add_day=7
-    
-
-        if  elements.month == last_month and elements.day>=26:#elements.month==4 and
-            add_day=14
 
         for rows_data in Class_Data:
             if getattr(rows_data,'納期_copy')==start_time and rows_data.get_used==0:
                 today_data.append(rows_data)
-
         
             if getattr(rows_data,'納期_copy')>start_time and rows_data.get_used==0:
-                if getattr(rows_data,'納期_copy')<=(start_time+timedelta(days=see_future1)):
+                if getattr(rows_data,'納期_copy')<=(start_time+timedelta(days=see_future1)+timedelta(days=see_future1)):
                     future_data.append(rows_data)
 
+            # if getattr(rows_data,'納期_copy')>(start_time+timedelta(days=see_future1)) and getattr(rows_data,'納期_copy')<=(start_time+timedelta(days=see_future))and rows_data.get_used==0:
+            #     far_future1.append(rows_data)
 
-            # if getattr(rows_data,'納期_copy')>(start_time+timedelta(days=see_future1)) and getattr(rows_data,'納期_copy')<=(start_time+timedelta(days=see_future1+add_day))and rows_data.get_used==0:
-            #     far_future1.append(rows_data) Class_Data
-
-
-            if getattr(rows_data,'納期_copy')>(start_time+timedelta(days=see_future1)) and getattr(rows_data,'納期_copy')<=(start_time+timedelta(days=see_future))and rows_data.get_used==0:
-                far_future1.append(rows_data)
-
- 
-
-
+        unknown=[ele for ele in Class_Data if ele not in future_data]
+   
         far_future1=[ele for ele in far_future1 if ele not in future_data and not ele.品名.startswith('ｿﾌﾄﾌｱｲﾝ') and not ele.品名.startswith('ｿﾌﾄｽﾍﾟｼｬﾙ') and not ele.品名.startswith('ND10') and not ele.品名.startswith('ﾊｲｿﾌﾄ')]
 
         for_canned_total_data=today_data+future_data+far_future1
@@ -1140,7 +1114,6 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
         today_data=filter_objects(today_data, elements)
         future_data=filter_objects(future_data, elements)
         far_future1=filter_objects(far_future1, elements)
-
 
         #if saturday then remove few stuffs from these lists
 
@@ -1169,7 +1142,9 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
             total_data2=far_future1
             far_future1=[]
 
-        available_lines=['MK','FK','KO']
+        # available_lines=['MK','FK','KO']
+        available_lines=[line_name]
+
         for eachline in available_lines:
             ko_slicing=False
             attribute_name1=f'priority_{eachline}'
@@ -1441,19 +1416,28 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
 
                 ko_slice=[ele for ele in total_data1 if getattr(ele,'KOスライス製品')=='○']
 
+                print(f'total data1 length= {len(total_data1)}')
+                print(f'far_futurelength= {len(far_future)}')
+                # exit()
+
 
                 if elements.day_name()=='Saturday':
                     ko_slice=[]
                     Magarin=True
+  
+                print(f"first length of future groups is {len(far_future)}")
 
+
+               
 
                 probhibited_hour=[23,0,1,2,3,4,5,6]
                 non_mb_orimpia=[ele for ele in ko_slice if not ele.品名.startswith('MB-ｵﾘﾝﾋﾟｱ')]
 
                 if KO.start_time.hour in probhibited_hour and len(non_mb_orimpia)==0:
                     ko_slice=[]
-                
-
+ 
+                print(f"the length of total_data1 is {len(total_data1)}")
+                print(len(ko_slice),not Magarin)
 
                 if len(ko_slice)>0 and not Magarin:
                     # new_future=[ele for ele in far_future1 if getattr(ele,'一般マーガリン製品')!='○']
@@ -1485,8 +1469,6 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                         #KO_line_total_time=1320
                     else:
                         continue
-
-
 
             for task in total_data:
 
@@ -1633,6 +1615,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
 
             subete_group=A_Group+B_Group+C_Group+D_Group+F_Group
 
+            
             last_in_subete_group=[ele for ele in subete_group if ele.last==1]
 
             if eachline=='MK':#and elements>=datetime.datetime(2023,3,22) and elements<datetime.datetime(2023,4,18)
@@ -1673,6 +1656,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                 subete_group,current_group,future_groups=yusen(subete_group,current_group,future_groups,elements,optimizer,eachline)
 
             subete_ikeru_task=subete_group#A_Group+B_Group+C_Group+D_Group+F_Group
+            
 
             can_A_first=[ele for ele in canned_data if getattr(ele,'アレルゲン')=='A']
             can_B_first=[ele for ele in canned_data if getattr(ele,'アレルゲン')=='B']
@@ -1720,14 +1704,9 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                     arerugen_check_list=arerugen_checker(subete_ikeru_task)
 
                 else:
-
                     arerugen_check_list=arerugen_checker_new(subete_ikeru_task)
 
-                # if elements.month==3 and elements.day==16 and eachline=='MK':
-                #     create_csv_from_objects(f'mk3_16_after{elements.day_name()}_{elements.month}.csv', arerugen_check_list)
-
-                if elements.day_name()=='Monday' and eachline=='MK':# and MK_FK_selector%2==0:
-
+                if elements.day_name()=='Monday' and eachline=='MK':
 
                     deep_copies_list = [copy.deepcopy(obj) for obj in master_sunday_data]
                     for ele in deep_copies_list:
@@ -1858,7 +1837,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                     arerugen_check_list=arerugen_checker(subete_ikeru_task)
 
             last_from_arerugen=[ele for ele in arerugen_check_list if getattr(ele,'last')==1]
-
+            
             # today_last=[ele for ele in last_from_arerugen if getattr(ele,'納期_copy')==elements]
             last_found=False
 
@@ -1914,7 +1893,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
 
             arerugen_check_list=arerugen_check_list+no_limit_last
 
-
+            print(f"length of future groups is {len(future_groups)}")
 
             def order_objects_by_name_prefix(objects, name_prefix_order):
                 """
@@ -1943,7 +1922,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
             
             
             # Desired order
-            if premium_star:
+            if eachline=='MK' and premium_star:
                 name_prefix_order = ["ﾌﾟﾗｽﾞﾏAR","ﾌﾟﾗｽﾞﾏNFC","ﾌﾟﾚﾐｱﾑｽﾀ-DX","ﾌﾟﾗｽﾞﾏDX","ｱﾛﾏｽﾀｰ","ｴﾚﾊﾞｰﾙｿﾌﾄ"]
                 plasmaAR=False
                 for premium_products in arerugen_check_list:
@@ -2764,6 +2743,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
 
                 prefixes_with_two_hrs=['ｱﾛﾏ-ﾃﾞﾏｲﾙﾄﾞｽﾗｲｽDG','ｵﾘﾝﾋﾟｱｽﾗｲｽ(ｽｲｰﾄﾐﾙｸ)','ｵﾘﾝﾋﾟｱﾒﾛ-ｼ-ﾄ(ｽｲ-ﾄ)','ｵﾘﾝﾋﾟｱｸﾚ-ﾙ(ｽﾗｲｽ)',
                                        'ｶﾚﾝﾃｲｼ-ﾄ(ｽｲ-ﾄ)','ｵﾘﾝﾋﾟｱﾅﾁﾕﾗﾙｼ-ﾄ','ｵﾘﾝﾋﾟｱCLｼ-ﾄ20','Pｼ-ﾄDB-R']
+                arerugen_check_list_copy=arerugen_check_list.copy()
                 
                 # orimpia AR sheet has to be manufactured at the beginning of the week
                 if first_time==0 or elements.day_name()=='Sunday':
@@ -2775,7 +2755,6 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                 nouki_and_seisanbi_same=[ele for ele in arerugen_check_list if getattr(ele,'納期_copy').date()<=(elements+timedelta(days=1)).date()]
 
                 #prioritizing those which has nouki as current date insted those which has future nouki
-                 #prioritizing those which has nouki as current date insted those which has future nouki
                 if len(nouki_and_seisanbi_same)>0:
                     index=arerugen_check_list.index(nouki_and_seisanbi_same[-1])
                     previous_elements=arerugen_check_list[:index]
@@ -2785,32 +2764,16 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                     for new_ele in previous_elements_backup:
                        
                         if len(previous_elements)>=4 and new_ele not in nouki_and_seisanbi_same:
-                            # if not any(new_ele.品名 == ele.品名 and new_ele.納期 == ele.納期 for ele in nouki_and_seisanbi_same):
-                            print(new_ele.品名)
-                            print(new_ele.納期)
                             previous_elements.remove(new_ele)
+
+             
+
 
 
                     removed_elements= [ele for ele in previous_elements_backup if ele not in previous_elements]
                     arerugen_check_list= [ele for ele in arerugen_check_list if ele not in removed_elements]
-
-                # if len(nouki_and_seisanbi_same)>0:
-                #     index=arerugen_check_list.index(nouki_and_seisanbi_same[0])
-                #     previous_elements=arerugen_check_list[:index]
-
-                #     previous_elements_backup=copy.deepcopy(previous_elements)
-
-
-                #     while (len(nouki_and_seisanbi_same) + len(previous_elements))> 6 and len(previous_elements)>0:
-                #         index=index-1
-                #         previous_elements=previous_elements[:index]
-
-
-                #     removed_elements= [ele for ele in previous_elements if ele not in previous_elements_backup]
-                #     arerugen_check_list= [ele for ele in arerugen_check_list if ele not in removed_elements]
-
-
-                arerugen_check_list_copy=arerugen_check_list.copy()
+                
+                
                 # MB_orimpia=[ele for ele in arerugen_check_list if ele.品名.startswith('MB-ｵﾘﾝﾋﾟｱ')]  荷姿
                 MB_orimpia=[ele for ele in arerugen_check_list if ele.荷姿.startswith('コンテナ')]
 
@@ -2829,10 +2792,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                         T2=len(new_type_list)==0 and len(new_type_low)==0
 
                         restricted_time=KO.start_time+timedelta(minutes=getattr(dle,'KO流量_time'))
-                        
 
-                        #440
-                        #1360
                         m1=KO.start_time.hour*60+KO.start_time.minute
                         m2=restricted_time.hour*60+restricted_time.minute
                         T1=(m1>=440 and m1<=1360) and (m2>=440 and m2<=1360)
@@ -2910,11 +2870,6 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
 
                             setattr(dle,'kostarttime',KO.start_time)
 
-                            # if dle.品名=='ｱﾛﾏ-ﾃﾞﾏｲﾙﾄﾞｼ-ﾄ(M)':
-                            #     print(KO.start_time)
-                            #     print(dle.__dict__)
-                            #     sleep(10)
-
                         else:
                             break
 
@@ -2929,14 +2884,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
 
                         
                     if  getattr(ele,'納期_copy').date()>=KO.start_time.date() and KO.start_time+timedelta(minutes=KO.cleaning_time)+timedelta(minutes=getattr(ele,'KO流量_time'))<=KO.end_time and  KO.start_time.date() not in dat2 and TT:#and len(ko_list)<=max_kolist
-                        # print(KO.start_time.date(),dat2)
 
-                        # if ele.ko_remark and len(KO_LIST):
-                        #     if KO.start_time-timedelta(hours=3)<KO.start_time.replace(hour=2,minute=0) and KO.start_time<KO.start_time.replace(hour=5,minute=0):
-                        #         KO.start_time+=timedelta(hours=2)
-
-                        # if len(KO_LIST):
-                        #     KO.start_time=KO.start_time+timedelta(minutes=KO.cleaning_time)
                         before_before_time=KO.start_time
                         KO.start_time=added_time(KO_LIST,prefixes_with_two_hrs,ele,KO)
 
@@ -2981,19 +2929,6 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                             KO.start_time=KO.start_time+timedelta(minutes=80)
                             setattr(ele,'break',2)
 
-                        
-                        # print(before_time.hour)
-                        # print(after_after_time.hour)
-
-                        # if ele.品名=='ｱﾛﾏ-ﾃﾞﾏｲﾙﾄﾞｼ-ﾄ(M)':
-                        #     print(KO.start_time)
-                        #     print(ele.__dict__)
-                        #     sleep(10)
-                            
-
-                        
-
-
 
                         setattr(ele,'get_used',1)
                         setattr(ele,'slot',f'{before_time}-->{after_time}')
@@ -3005,20 +2940,27 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                         setattr(ele,'day',f'{after_time.day_name()}')
                         setattr(ele,'kostarttime',KO.start_time)
                 # Magarin=True
+                #or len(ko_list)<len(arerugen_check_list_copy
 
-                if KO.start_time<KO.start_time.replace(hour=23,minute=0) and  KO.start_time.date() not in dat2  :#and len(ko_list)<=max_kolist
-
-                    # print('reached_in ko next part')
-
+                if (KO.start_time<KO.start_time.replace(hour=23,minute=0) or len(ko_list)<len(arerugen_check_list_copy)) and  KO.start_time.date() not in dat2  :
+                    print('reached here')
+                    print(f'the length of arerugen_check_list_copy {len(arerugen_check_list_copy)}')
                     unused_arerugen_list=[ele for ele in arerugen_check_list_copy if getattr(ele,'get_used')==0]
 
+                    unused_arerugen_list=reorder_same_name(unused_arerugen_list)
 
-                    
-
+                    print(f'the length of unused_arerugen_list {len(unused_arerugen_list)}')
                     new_arerugen_check_list=salt_order_checker(ko_list+unused_arerugen_list+future_groups)
 
+                    print(f"the length of futute groups {len(future_groups)}")
+
+                    print(f'the length of salt_order_checker {len(new_arerugen_check_list)}')
+
                     new_arerugen_check_list=arerugen_checker(new_arerugen_check_list)
+                    print(f'first the length of new_arerugen_check_list {len(new_arerugen_check_list)}')
                     new_arerugen_check_list=[ele for ele in new_arerugen_check_list if ele not in ko_list]
+
+                    print(f'second the length of new_arerugen_check_list {len(new_arerugen_check_list)}')
 
                     # MB_orimpia=[ele for ele in new_arerugen_check_list if ele.品名.startswith('MB-ｵﾘﾝﾋﾟｱ')]
                     MB_orimpia=[ele for ele in new_arerugen_check_list if ele.荷姿.startswith('コンテナ')]
@@ -3027,6 +2969,11 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
 
                     for ele in new_arerugen_check_list:
                         #KO.start_time+timedelta(minutes=KO.cleaning_time)+timedelta(minutes=getattr(ele,'KO流量_time'))<=elements+timedelta(hours=24)
+                        print('eachtime')
+                        print(ele.品名)
+                        print(ele.納期)
+                        print(f"the length of KO list {len(KO_LIST)}")
+
                         final_hour=KO.start_time.hour
                         minute=KO.start_time.minute
                         total_minutes = final_hour * 60 + minute
@@ -3059,8 +3006,8 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                             else:
                                 T3=True
 
-                            
-                            if  T1 and T2 and T3 and total_minutes+int(getattr(dle,'KO流量_time'))<1380 :#and len(ko_list)<=max_kolist
+                            #and total_minutes+int(getattr(dle,'KO流量_time'))<1380 
+                            if  T1 and T2 and T3 :#and len(ko_list)<=max_kolist
                                 #this region adds extra 1 hour of cleaning time for certain kind of products as defined
                                 before_before_time=KO.start_time
                                 KO.start_time=added_time(KO_LIST,prefixes_with_two_hrs,dle,KO)
@@ -3133,9 +3080,10 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                         else:
                             TT=True
     
-                        
+                        #total_minutes+KO.cleaning_time+int(getattr(ele,'KO流量_time'))<1380 and
+                        print(getattr(ele,'納期_copy').date()>=KO.start_time.date(), KO.start_time+timedelta(minutes=KO.cleaning_time)+timedelta(minutes=getattr(ele,'KO流量_time'))<=KO.end_time ,  next_DaY not in dat2 , TT)
 
-                        if  total_minutes+KO.cleaning_time+int(getattr(ele,'KO流量_time'))<1380 and getattr(ele,'納期_copy').date()>=KO.start_time.date() and KO.start_time+timedelta(minutes=KO.cleaning_time)+timedelta(minutes=getattr(ele,'KO流量_time'))<=KO.end_time and  next_DaY not in dat2 and TT:#and len(ko_list)<=max_kolist
+                        if  getattr(ele,'納期_copy').date()>=KO.start_time.date() and KO.start_time+timedelta(minutes=KO.cleaning_time)+timedelta(minutes=getattr(ele,'KO流量_time'))<=KO.end_time and  next_DaY not in dat2 and TT:#and len(ko_list)<=max_kolist
 
                             #this region adds extra 1 hour of cleaning time for certain kind of products as defined
                             before_before_time=KO.start_time
@@ -3194,13 +3142,16 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
 
                 after_ko_list=len(KO_LIST)
 
+                
 
-                if len(ko_list)>0 :#and elements.month<=4 and elements.day<15
-                    if datetime.datetime.strptime(ko_list[-1].end, "%Y-%m-%d %H:%M:%S").hour<=12:
-
-                        # print(ko_list[-1].__dict__)
-                        # sleep(10)
-                        # # print(f"ko list len {len(ko_list),len(KO_LIST)}")#荷姿
+                if False:#len(ko_list)>0 :#and elements.month<=4 and elements.day<15
+                    now_time=datetime.datetime.strptime(KO_LIST[-1].end, "%Y-%m-%d %H:%M:%S").replace(hour=0,minute=0)
+                    future_from_current_Day=[ele for ele in Class_Data if ele.get_used==0 and ele.納期_copy<=now_time+timedelta(days=14)  
+                                                 and int(getattr(ele,'予定数量(㎏)'))<=4800  
+                                                 and int(getattr(ele,'KO流量_time'))!=0 
+                                                 and getattr(ele,'窒素ガス')!='○' and getattr(ele,'KOスライス製品')=='○']
+                    
+                    if datetime.datetime.strptime(ko_list[-1].end, "%Y-%m-%d %H:%M:%S").hour<=12 or len(future_from_current_Day)>0:
 
 
                         now_time=datetime.datetime.strptime(KO_LIST[-1].end, "%Y-%m-%d %H:%M:%S").replace(hour=0,minute=0)
@@ -3208,7 +3159,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                         convert_to_unused=[ele for ele in ko_list if ele.生産日==ko_list[-1].生産日]
 
                         previously_used_data_length=len(convert_to_unused)
-                        counter_type_KO=counter_type_KO-previously_used_data_length
+                        # counter_type_KO=counter_type_KO-previously_used_data_length
 
 
                         resetting_instances_attributes(convert_to_unused)
@@ -3230,6 +3181,8 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                                                  and int(getattr(ele,'予定数量(㎏)'))<=4800  
                                                  and int(getattr(ele,'KO流量_time'))!=0 
                                                  and getattr(ele,'窒素ガス')!='○' and getattr(ele,'KOスライス製品')=='○']
+                        
+                        print(f'the length of future_from_current_Day {len(future_from_current_Day)}')
 
 
                         A_first=[ele for ele in future_from_current_Day if getattr(ele,'アレルゲン')=='A']
@@ -3241,7 +3194,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                         E_first=[ele for ele in future_from_current_Day if getattr(ele,'アレルゲン')=='E']
                         future_from_current_Day=A_first+B_first+C_first+D_first+F_first
 
-                        future_from_current_Day=[ele for ele in future_from_current_Day if ele not in convert_to_unused]
+                        # future_from_current_Day=[ele for ele in future_from_current_Day if ele not in convert_to_unused]
                         # exit()
 
                         if True:#KO.start_time<KO.start_time.replace(hour=23,minute=0) and  KO.start_time.date() not in dat2  :#and len(ko_list)<=max_kolist
@@ -3251,16 +3204,16 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                             new_arerugen_check_list=arerugen_checker(new_arerugen_check_list)
                             new_arerugen_check_list=[ele for ele in new_arerugen_check_list if ele not in ko_list]
 
-                            remaining_length=6-previously_used_data_length
+                            # remaining_length=6-previously_used_data_length
 
-                            if remaining_length>0:
+                            # if remaining_length>0:
 
-                                new_arerugen_check_list=new_arerugen_check_list[:remaining_length]+convert_to_unused
+                            #     new_arerugen_check_list=new_arerugen_check_list[:remaining_length]+convert_to_unused
 
-                            else:
-                                print("print i am in continue region ")
-                                exit()
-                                continue
+                            # else:
+                            #     print("print i am in continue region ")
+                            #     exit()
+                            #     continue
 
                             # MB_orimpia=[ele for ele in new_arerugen_check_list if ele.品名.startswith('MB-ｵﾘﾝﾋﾟｱ')]
                             MB_orimpia=[ele for ele in new_arerugen_check_list if ele.荷姿.startswith('コンテナ')]
@@ -3307,7 +3260,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                                         T3=True
 
                                     
-                                    if  T1 and T2 and T3 and total_minutes+int(getattr(ele,'KO流量_time'))<1380  :#and len(ko_list)<=max_kolist
+                                    if  T1 and T2 and T3 :#and len(ko_list)<=max_kolist
                                         #this region adds extra 1 hour of cleaning time for certain kind of products as defined
                                         before_before_time=KO.start_time
                                         KO.start_time=added_time(KO_LIST,prefixes_with_two_hrs,ele,KO)
@@ -3393,7 +3346,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
             
                                 
 
-                                if  total_minutes+KO.cleaning_time+int(getattr(ele,'KO流量_time'))<1490 and getattr(ele,'納期_copy').date()>=KO.start_time.date() and KO.start_time+timedelta(minutes=KO.cleaning_time)+timedelta(minutes=getattr(ele,'KO流量_time'))<=KO.end_time and  next_DaY not in dat2 and TT:#and len(ko_list)<=max_kolist
+                                if  getattr(ele,'納期_copy').date()>=KO.start_time.date() and KO.start_time+timedelta(minutes=KO.cleaning_time)+timedelta(minutes=getattr(ele,'KO流量_time'))<=KO.end_time and  next_DaY not in dat2 and TT:#and len(ko_list)<=max_kolist
                                     
                                     #this region adds extra 1 hour of cleaning time for certain kind of products as defined
                                     before_before_time=KO.start_time
@@ -3455,29 +3408,18 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                         # print(f"ko list len  after {len(ko_list),len(KO_LIST)}")
 
 
-                if len(ko_list)>0:
+                # if len(ko_list)>0:
                     
-                    if datetime.datetime.strptime(ko_list[-1].end, "%Y-%m-%d %H:%M:%S").hour<=12:
-                        convert_to_unused=[ele for ele in ko_list if ele.生産日==ko_list[-1].生産日]
+                #     if datetime.datetime.strptime(ko_list[-1].end, "%Y-%m-%d %H:%M:%S").hour<=12:
+                #         convert_to_unused=[ele for ele in ko_list if ele.生産日==ko_list[-1].生産日]
                         
-                        Magarin=True
+                #         Magarin=True
 
-                        # print(f'the convert to be unused is: {convert_to_unused}')
-                        # print(f'the KO_LIST is: {KO_LIST}')
-
-                        KO_LIST=[ele for ele in KO_LIST if ele not in convert_to_unused]
-
-                        # print(KO.start_time)
-
-
-                        # KO.start_time=datetime.datetime.strptime(KO_LIST[-1].end, "%Y-%m-%d %H:%M:%S")
-
+                #         KO_LIST=[ele for ele in KO_LIST if ele not in convert_to_unused]                
                         
-                        
-                        
-                        if len(KO_LIST):
-                            KO.start_time=datetime.datetime.strptime(KO_LIST[-1].end, "%Y-%m-%d %H:%M:%S")
-                            resetting_instances_attributes(convert_to_unused)
+                #         if len(KO_LIST):
+                #             KO.start_time=datetime.datetime.strptime(KO_LIST[-1].end, "%Y-%m-%d %H:%M:%S")
+                #             resetting_instances_attributes(convert_to_unused)
 
 
 
