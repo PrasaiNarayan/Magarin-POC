@@ -18,9 +18,6 @@ class FirstClass:
             setattr(self, key, value)
 
 class SecondClass():
-    # def __init__(self, row_data, first_class):
-    #     # self.first_class = first_class
-    #     self.read_csv_and_set_attributes(row_data,first_class)
 
     def __init__(self, attributes=None, first_class=None):
         if attributes is not None:
@@ -33,8 +30,6 @@ class SecondClass():
         for key, value in attributes.items():
             setattr(self, key, value)
 
-
-
     def read_csv_and_set_attributes(self, row_data,first_class):
         if row_data['品目コード'] == first_class.品目コード:#self.first_class.品目コード:
             for key, value in row_data.items():
@@ -43,19 +38,6 @@ class SecondClass():
                 if key != '品目コード':
                     setattr(self, key, value)
 
-
-    # def split_if_needed(self):
-    #     # If weight is over 6000, create two new instances
-    #     if int(getattr(self,'予定数量(㎏)')) > 6000:
-    #         # Copy the instance's attributes and update the weight
-    #         attributes = self.__dict__.copy()
-    #         attributes['予定数量(㎏)'] = int(getattr(self,'予定数量(㎏)')) / 2
-
-    #         new_instance1 = SecondClass(attributes)
-    #         new_instance2 = SecondClass(attributes)
-    #         return new_instance1, new_instance2
-    #     # If not, return the instance itself
-    #     return self
     
     def split_if_needed(self,split_weight):
         # Get the current weight and convert to int
@@ -134,21 +116,16 @@ def create_csv_from_objects(file_name, objects):
         return
 
     fieldnames = list(objects[0].__dict__.keys())
-    # print(fieldnames)
-
-    # if 'first_class' in fieldnames:
-    #     fieldnames.remove('first_class')
 
     with open(file_name, 'w', newline='',encoding='utf_8_sig') as csvfile:
-    # with open(file_name, 'w', newline='',encoding='cp932') as csvfile:
+
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 
         for obj in objects:
            
             if hasattr(obj, 'KOスライス製品') and getattr(obj, 'KOスライス製品') =='○' and hasattr(obj, 'break') and getattr(obj, 'break') == 1:
-                # if hasattr(obj, 'break') and getattr(obj, 'break') == 1:
-                    # Write an empty line
+
                 writer.writerow({})
                 writer.writerow(obj.__dict__)
 
@@ -172,7 +149,6 @@ def additional_features(objects):
 
     for eachobject in objects:
         try:
-            #if eachobject['予定数量(㎏)']!=0 and eachobject['MK流量(㎏/h)']!=0:
 
             if 'or' in getattr(eachobject,'MK流量(㎏/h)'):
                 dividing_value=getattr(eachobject,'MK流量(㎏/h)').split('or')[0]
@@ -209,30 +185,10 @@ def additional_features(objects):
         if 'ストレッチ' in getattr(eachobject,'特記事項'):
             setattr(eachobject,'納期_copy',getattr(eachobject,'納期_copy')- timedelta(days=7))
 
-        # abc=False
 
-        # if getattr(eachobject,'納期_copy').strftime('%A')=='Saturday' and getattr(eachobject,'品名').startswith('ﾌﾟﾚﾐｱﾑｴ-ｽ-3'):
-        #     print('premium')
-        #     print(getattr(eachobject,'繰上不可(×）'))
-            
-        #     print(getattr(eachobject,'納期_copy'))
-            
-        #     # exit()
-        #     abc=True
-
-        # ==
         if getattr(eachobject,'納期_copy').strftime('%A')=='Saturday' and (getattr(eachobject,'繰上不可(×）')==None or getattr(eachobject,'繰上不可(×）')==''):#and getattr(eachobject,'納期_copy').date() not in usablesat:
             setattr(eachobject,'納期_copy',(getattr(eachobject,'納期_copy')- timedelta(days=1)))
-            # print('reached data changer')
-       
-        # if abc:
-        #     print('changed to')
-        #     print(getattr(eachobject,'納期_copy'))
-        #     exit()
 
-
-        # if getattr(eachobject,'納期_copy').strftime('%A')=='Sunday':
-        #     setattr(eachobject,'納期_copy',(getattr(eachobject,'納期_copy')- timedelta(days=2)))
 
 
         setattr(eachobject,'first',0)
@@ -498,8 +454,8 @@ def manufacture_multiple_files(input_file):
     
 
     newly_instance=create_objects_with_inherited_features_new_instances('master.csv', newly_instance)
-    for ele in newly_instance:
-        print(ele.__dict__)
+    # for ele in newly_instance:
+    #     print(ele.__dict__)
 
     objects_with_inherited_features=objects_with_inherited_features+newly_instance
 
@@ -517,269 +473,237 @@ def manufacture_multiple_files(input_file):
 
 
 
-
-# def main_function(file1,file2,start,end, holiday_from, holiday_to):
-#     print(start,end)
-# file1='order_data_2024_3_月.csv'
-file1='order_data_2024_3_月_with_ticket.csv'
-file2='reorder_data_2024_3_月.csv'
-
-#the are inputs required for brakes 
-
-# file1='order_3月-4月.csv'
-# file2 = 'Monday_product.csv'
-start = '03/01/2024'
-end = '03/15/2024'
-
-# start = '04/5/2023'
-# end = '04/17/2023'
-# saturdays=['04/08/2023','04/15/2023']
+#input data for planning
+file1='order_data_2024_3_月_with_ticket.csv' #order data
+start = '03/01/2024' #planning start date
+end = '03/30/2024'   #planning end date
 
 holiday_from= None
 holiday_to= None
 
-replanning_file_objects_listed = manufacture_multiple_files(file2)
-objects_with_inherited_features_deep_copy = manufacture_multiple_files(file1)
+try:
+    dat2 = pd.date_range(holiday_from, holiday_to)
+except (ValueError, pd.errors.ParserError):
+    dat2 = pd.date_range(start='1900-01-01', periods=0)
 
+objects_with_inherited_features = manufacture_multiple_files(file1)
+#sort it on the ascending order
+objects_with_inherited_features = sorted(objects_with_inherited_features, key=lambda obj: obj.納期_copy)
 
-#those days on which request came
-unique_dates=sorted({getattr(ele, '依頼日') for ele in replanning_file_objects_listed})
+master_sunday_data=[]
 
-compare_date=datetime.strptime(start, '%m/%d/%Y')
-unique_dates_to_use=[ele for ele in unique_dates if datetime.strptime(ele, '%Y-%m-%d') <= compare_date]
+master_monday_data=[ele for ele in objects_with_inherited_features if ele.品名.startswith('ﾏﾙﾆｼﾛ')]#[0]
 
+if len(master_monday_data)>1:
+    # master_sunday_data=[master_sunday_data[0]]
+    for ele in master_monday_data:
+        # print(type(getattr(ele,'納期_copy')))
+        # if getattr(ele,'納期_copy').day_name()=='Tuesday':
+        #     deltas=ele.納期_copy -timedelta(days=1)
+        #     setattr(ele,'納期_copy',deltas)
 
-#making sure that the planning happens for the start date as well
-date_object = datetime.strptime(start, '%m/%d/%Y')
-# Reformat the date string to 'YYYY-MM-DD'
-formatted_date = date_object.strftime('%Y-%m-%d')
+        if getattr(ele,'納期_copy').strftime('%A')=='Wednesday':
+            deltas=ele.納期_copy -timedelta(days=1)
+            setattr(ele,'納期_copy',deltas)
 
-if formatted_date not in unique_dates_to_use:
-    unique_dates_to_use.insert(0,formatted_date)
+        if getattr(ele,'納期_copy').strftime('%A')=='Thursday':
+            deltas=ele.納期_copy -timedelta(days=2)
+            setattr(ele,'納期_copy',deltas)
 
+        if getattr(ele,'納期_copy').strftime('%A')=='Friday':
+            deltas=ele.納期_copy -timedelta(days=3)
+            setattr(ele,'納期_copy',deltas)
 
+        if getattr(ele,'納期_copy').strftime('%A')=='Saturday':
+            deltas=ele.納期_copy -timedelta(days=4)
+            setattr(ele,'納期_copy',deltas)
 
-for uni_date in unique_dates_to_use:
-
-    objects_with_inherited_features = copy.deepcopy(objects_with_inherited_features_deep_copy)
-    replanning_file_objects= copy.deepcopy(replanning_file_objects_listed)   
-
-    each_day_reorder=[ele for ele in replanning_file_objects if ele.依頼日<=uni_date]
-
-    if uni_date== formatted_date:
-        each_day_reorder=[]
-
-    matched_data=[]
-
-    for reorder_data in each_day_reorder:
-        matching_record=[ele for ele in objects_with_inherited_features if getattr(ele,'納期_copy')==getattr(reorder_data,'納期_copy') 
-                         and getattr(ele,'品目コード')==getattr(reorder_data,'品目コード')]
-
-        # print([ele.品名 for ele in matching_record])
-
-        for orders in matching_record:
-            if orders not in matched_data:
-                matched_data.append(orders)
-
-
-    #now remove those matched record
-    objects_with_inherited_features = [ele for ele in objects_with_inherited_features if ele not in matched_data]
-
-
-
-    objects_with_inherited_features+= each_day_reorder
-
-    master_sunday_data=[ele for ele in objects_with_inherited_features if ele.品名.startswith('ﾏﾙﾆｼﾛ')]#[0]
-    if len(master_sunday_data)>1:
-        master_sunday_data=[master_sunday_data[0]]
-    # print(file2)
-
-    objects_with_inherited_features=[ele for ele in objects_with_inherited_features if not ele.品名.startswith('ﾏﾙﾆｼﾛ')]
-
-
-    create_csv_from_objects('output.csv', objects_with_inherited_features)
-    dat=pd.date_range(start, end)
-
-    dates_with_features=[]
-    for each_date in dat:
-
-        long_break_start_time_MK=[each_date+timedelta(hours=11)+timedelta(minutes=30)]
-        long_break_start_time_FK=[each_date+timedelta(hours=11)+timedelta(minutes=30)]
-        long_break_start_time_KO=[each_date+timedelta(hours=11)+timedelta(minutes=30)]
-
-
-        break_duration_in_hour_MK=[60]
-        break_duration_in_hour_FK=[60]
-        break_duration_in_hour_KO=[60]
-
-
-        if each_date.day_name()=='Sunday':
-            long_break_start_time_MK=[]
-            long_break_start_time_FK=[]
-            long_break_start_time_KO=[]
-
-            break_duration_in_hour_MK=[]
-            break_duration_in_hour_FK=[]
-            break_duration_in_hour_KO=[]
-
-        every_line_break_pattern={}
-        every_line_break_pattern['MK_break_pattern']={}
-        every_line_break_pattern['FK_break_pattern']={}
-        every_line_break_pattern['KO_break_pattern']={}
-
-
-
-        for index,each_brake in enumerate(long_break_start_time_MK):
-            # Ensure 'MK_break_pattern' key exists and add new nested dictionaries under it
-            if 'MK_break_pattern' not in every_line_break_pattern:
-                every_line_break_pattern['MK_break_pattern'] = {}
-            every_line_break_pattern['MK_break_pattern'][f'break{index}']= {'break':each_brake,f'break_duration':break_duration_in_hour_MK[index]}
-
-        for index,each_brake in enumerate(long_break_start_time_FK):
-            #Ensure 'FK_break_pattern' key exists and add new nested dictionaries under it
-
-            if 'FK_break_pattern' not in every_line_break_pattern:
-                every_line_break_pattern['FK_break_pattern'] = {}
-
-            every_line_break_pattern['FK_break_pattern'][f'break{index}']= {'break':each_brake,f'break_duration':break_duration_in_hour_FK[index]}
-
-        for index,each_brake in enumerate(long_break_start_time_KO):
-            #Ensure 'FK_break_pattern' key exists and add new nested dictionaries under it
-
-            if 'KO_break_pattern' not in every_line_break_pattern:
-                every_line_break_pattern['KO_break_pattern'] = {}
-
-            every_line_break_pattern['KO_break_pattern'][f'break{index}']= {'break':each_brake,f'break_duration':break_duration_in_hour_KO[index]}
-
-        each_date_feature= Date_Class(each_date,every_line_break_pattern)
-
+        if getattr(ele,'納期_copy').strftime('%A')=='Sunday':
+            deltas=ele.納期_copy -timedelta(days=5)
+            setattr(ele,'納期_copy',deltas)
         
-        dates_with_features.append(each_date_feature)
+
+# objects_with_inherited_features=[ele for ele in objects_with_inherited_features if not ele.品名.startswith('ﾏﾙﾆｼﾛ')]
+
+dat=pd.date_range(start, end)
+
+dates_with_features=[]
+for each_date in dat:
+
+    # long_break_start_time_MK=[each_date+timedelta(hours=11)+timedelta(minutes=30)]
+    # long_break_start_time_FK=[each_date+timedelta(hours=11)+timedelta(minutes=30)]
+    # long_break_start_time_KO=[each_date+timedelta(hours=11)+timedelta(minutes=30)]
+
+    long_break_start_time_MK=[]
+    long_break_start_time_FK=[]
+    long_break_start_time_KO=[]
+
+    # break_duration_in_hour_MK=[60]
+    # break_duration_in_hour_FK=[60]
+    # break_duration_in_hour_KO=[60]
+
+    break_duration_in_hour_MK=[]
+    break_duration_in_hour_FK=[]
+    break_duration_in_hour_KO=[]
+
+
+    if each_date.day_name()=='Sunday':
+        long_break_start_time_MK=[]
+        long_break_start_time_FK=[]
+        long_break_start_time_KO=[]
+
+        break_duration_in_hour_MK=[]
+        break_duration_in_hour_FK=[]
+        break_duration_in_hour_KO=[]
+
+    every_line_break_pattern={}
+    every_line_break_pattern['MK_break_pattern']={}
+    every_line_break_pattern['FK_break_pattern']={}
+    every_line_break_pattern['KO_break_pattern']={}
 
 
 
-    try:
-        dat2 = pd.date_range(holiday_from, holiday_to)
-    except (ValueError, pd.errors.ParserError):
-        dat2 = pd.date_range(start='1900-01-01', periods=0)
+    for index,each_brake in enumerate(long_break_start_time_MK):
+        # Ensure 'MK_break_pattern' key exists and add new nested dictionaries under it
+        if 'MK_break_pattern' not in every_line_break_pattern:
+            every_line_break_pattern['MK_break_pattern'] = {}
+        every_line_break_pattern['MK_break_pattern'][f'break{index}']= {'break':each_brake,f'break_duration':break_duration_in_hour_MK[index]}
 
+    for index,each_brake in enumerate(long_break_start_time_FK):
+        #Ensure 'FK_break_pattern' key exists and add new nested dictionaries under it
 
-    list_of_saturdays=[]
-    for days in dat:
-        if days.day_name()=='Saturday' and days not in dat2:
-            list_of_saturdays.append(days)
+        if 'FK_break_pattern' not in every_line_break_pattern:
+            every_line_break_pattern['FK_break_pattern'] = {}
 
+        every_line_break_pattern['FK_break_pattern'][f'break{index}']= {'break':each_brake,f'break_duration':break_duration_in_hour_FK[index]}
 
-    length_non_used_data = sys.maxsize
+    for index,each_brake in enumerate(long_break_start_time_KO):
+        #Ensure 'FK_break_pattern' key exists and add new nested dictionaries under it
 
-    MK_LIST2,FK_LIST2,KO_LIST2=[],[],[]
-    all_inherited_features=copy.deepcopy(objects_with_inherited_features)
+        if 'KO_break_pattern' not in every_line_break_pattern:
+            every_line_break_pattern['KO_break_pattern'] = {}
 
+        every_line_break_pattern['KO_break_pattern'][f'break{index}']= {'break':each_brake,f'break_duration':break_duration_in_hour_KO[index]}
 
-    for each_saturday in list_of_saturdays:
+    each_date_feature= Date_Class(each_date,every_line_break_pattern)
 
-        print(each_saturday)
-        objects_with_inherited_features=copy.deepcopy(all_inherited_features)
-
-        dates=[]
-        MK_LIST1,FK_LIST1,KO_LIST1=[],[],[]
-
-        for ele in dates_with_features:#dat:#dates_with_features
-
-            if  ele.date.day_name()!='Saturday' and ele.date not in dat2:#ele.day_name()!='Sunday' and
-                dates.append(ele)
-
-            if ele.date.day_name()=='Saturday' or ele==dates_with_features[-1]:
-                
-                #Inclusion of saturday
-                if ele.date.date()==each_saturday.date():
-                    print()
-
-                optimizer_list=[0]
-                least_non_used_data_list=[]
-
-
-                for optimization_value in optimizer_list:
-                    objects_with_inherited_features=sorted(objects_with_inherited_features, key=lambda ele: ele.納期_copy)
-
-                    non_used_data,MK_LIST,FK_LIST,KO_LIST=priority.schedule_manager(objects_with_inherited_features,dates,master_sunday_data,optimization_value,see_future=14,dat2=dat2,arg='planning')
-
-                    prior_value=0
-                    yusen_non_used_data=[task for task in non_used_data if getattr(task,'納期_copy')>=ele.date and getattr(task,'納期_copy')<=ele.date+timedelta(days=7)]
-                    for task in yusen_non_used_data:
-
-                        if task.納期_copy==ele.date:
-                            prior_value+=1600
-
-                        if task.納期_copy==ele.date+timedelta(days=1):
-                            prior_value+=700
-
-                        elif task.納期_copy==ele.date+timedelta(days=2):
-                            prior_value+=600
-
-                        elif task.納期_copy==ele.date+timedelta(days=3):
-                            prior_value+=500
-
-                        elif task.納期_copy==ele.date+timedelta(days=4):
-                            prior_value+=400
-
-                        elif task.納期_copy==ele.date+timedelta(days=5):
-                            prior_value+=300
-
-                        elif task.納期_copy==ele.date+timedelta(days=6):
-                            prior_value+=200
-
-                        elif task.納期_copy==ele.date+timedelta(days=7):
-                            prior_value+=100
+    
+    dates_with_features.append(each_date_feature)
 
 
 
-                    # prior_value=len(non_used_data)
-                    least_non_used_data_list.append(prior_value)
+list_of_saturdays=[]
+for days in dat:
+    if days.day_name()=='Saturday' and days not in dat2:
+        list_of_saturdays.append(days)
 
-                    resetting_instances_attributes(objects_with_inherited_features)
 
-                    #the flags were made 0 so reset it to its original state
-                    for att in dates:
-                        att.UDF=att.old_UDF
+length_non_used_data = sys.maxsize
 
-                
+MK_LIST2,FK_LIST2,KO_LIST2=[],[],[]
+all_inherited_features=copy.deepcopy(objects_with_inherited_features)
 
-                min_value_index = least_non_used_data_list.index(min(least_non_used_data_list))
-                optimization_value=optimizer_list[min_value_index]
+#we plan on weekly basis meaning that plan starts on monday , sunday for KO and ends on friday we eva;uate the 
+#performance of every and find out if it is the best possible solution on the basis of highest number of allocations
+create_csv_from_objects('output.csv', objects_with_inherited_features)
+# exit()
+for each_saturday in list_of_saturdays:
+
+    objects_with_inherited_features=copy.deepcopy(all_inherited_features)
+
+    dates=[]
+    MK_LIST1,FK_LIST1,KO_LIST1=[],[],[]
+
+    for ele in dates_with_features:#dat:#dates_with_features
+
+        if  ele.date.day_name()!='Saturday' and ele.date not in dat2:#ele.day_name()!='Sunday' and
+            dates.append(ele)
+
+        if ele.date.day_name()=='Saturday' or ele==dates_with_features[-1]:
+            
+            #Inclusion of saturday
+            if ele.date.date()==each_saturday.date():
+                print()
+
+            optimizer_list=[0,1]
+            least_non_used_data_list=[]
+
+
+            for optimization_value in optimizer_list:
+                objects_with_inherited_features=sorted(objects_with_inherited_features, key=lambda ele: ele.納期_copy)
 
                 non_used_data,MK_LIST,FK_LIST,KO_LIST=priority.schedule_manager(objects_with_inherited_features,dates,master_sunday_data,optimization_value,see_future=14,dat2=dat2,arg='planning')
-                MK_LIST1+=MK_LIST
-                FK_LIST1+=FK_LIST
-                KO_LIST1+=KO_LIST
 
-                objects_with_inherited_features=[ele for ele in objects_with_inherited_features if getattr(ele,'get_used')==0]
-                dates=[]
-            # print(f'the dates at the end is :{dates}')
-
-        if len(non_used_data)<=length_non_used_data:
-
-            length_non_used_data=len(non_used_data)
-            
-            arg='planning'
- 
-            if uni_date!= formatted_date:
-                create_csv_from_objects(f'MK_{arg}_{uni_date}.csv', MK_LIST1)
-                create_csv_from_objects(f'FK_{arg}_{uni_date}.csv', FK_LIST1)
-                create_csv_from_objects(f'KO_{arg}_{uni_date}.csv', KO_LIST1)
-                create_csv_from_objects(f'unused_data_{arg}_{uni_date}.csv', non_used_data)
+                prior_value=0
                 
-            else:
-                create_csv_from_objects(f'MK_{arg}.csv', MK_LIST1)
-                create_csv_from_objects(f'FK_{arg}.csv', FK_LIST1)
-                create_csv_from_objects(f'KO_{arg}.csv', KO_LIST1)
-                create_csv_from_objects(f'unused_data_{arg}.csv', non_used_data)
+                yusen_non_used_data=[task for task in non_used_data if getattr(task,'納期_copy')>=ele.date and getattr(task,'納期_copy')<=ele.date+timedelta(days=7)]
+                for task in yusen_non_used_data:
 
-            MK_LIST2,FK_LIST2,KO_LIST2 = copy.deepcopy(MK_LIST1),copy.deepcopy(FK_LIST1),copy.deepcopy(KO_LIST1) 
+                    if task.納期_copy==ele.date:
+                        prior_value+=1600
+
+                    if task.納期_copy==ele.date+timedelta(days=1):
+                        prior_value+=700
+
+                    elif task.納期_copy==ele.date+timedelta(days=2):
+                        prior_value+=600
+
+                    elif task.納期_copy==ele.date+timedelta(days=3):
+                        prior_value+=500
+
+                    elif task.納期_copy==ele.date+timedelta(days=4):
+                        prior_value+=400
+
+                    elif task.納期_copy==ele.date+timedelta(days=5):
+                        prior_value+=300
+
+                    elif task.納期_copy==ele.date+timedelta(days=6):
+                        prior_value+=200
+
+                    elif task.納期_copy==ele.date+timedelta(days=7):
+                        prior_value+=100
+
+
+
+                # prior_value=len(non_used_data)
+                least_non_used_data_list.append(prior_value)
+
+                resetting_instances_attributes(objects_with_inherited_features)
+
+                #the flags were made 0 so reset it to its original state
+                for att in dates:
+                    att.UDF=att.old_UDF
 
             
+            # exit()
+            min_value_index = least_non_used_data_list.index(min(least_non_used_data_list))
+            optimization_value=optimizer_list[min_value_index]
+
+            non_used_data,MK_LIST,FK_LIST,KO_LIST=priority.schedule_manager(objects_with_inherited_features,dates,master_sunday_data,optimization_value,see_future=14,dat2=dat2,arg='planning')
+            MK_LIST1+=MK_LIST
+            FK_LIST1+=FK_LIST
+            KO_LIST1+=KO_LIST
+
+            objects_with_inherited_features=[ele for ele in objects_with_inherited_features if getattr(ele,'get_used')==0]
+            dates=[]
+        # print(f'the dates at the end is :{dates}')
+
+if len(non_used_data)<=length_non_used_data:
+
+    length_non_used_data=len(non_used_data)
+    
+    arg='planning'
+
+    create_csv_from_objects(f'MK_{arg}.csv', MK_LIST1)
+    create_csv_from_objects(f'FK_{arg}.csv', FK_LIST1)
+    create_csv_from_objects(f'KO_{arg}.csv', KO_LIST1)
+    create_csv_from_objects(f'unused_data_{arg}.csv', non_used_data)
+
+    MK_LIST2,FK_LIST2,KO_LIST2 = copy.deepcopy(MK_LIST1),copy.deepcopy(FK_LIST1),copy.deepcopy(KO_LIST1) 
+
+        
 
 
-    if len(MK_LIST2) or len(FK_LIST2) or len(KO_LIST2):
+if len(MK_LIST2) or len(FK_LIST2) or len(KO_LIST2):
 
-        ganttchart.ganttchart_creator(MK_LIST2,FK_LIST2,KO_LIST2)
+    ganttchart.ganttchart_creator(MK_LIST2,FK_LIST2,KO_LIST2)
