@@ -82,6 +82,17 @@ class SecondClass():
 
         # If not, return the instance itself
         return [self]
+    
+class Date_Class:
+    def __init__(self,each_date,every_line_break_pattern):
+        self.date=each_date
+        self.every_line_break_pattern=every_line_break_pattern
+
+        self.UDF=0
+        self.old_UDF=0
+        if len(every_line_break_pattern['KO_break_pattern']):
+            self.UDF=1  
+            self.old_UDF=1 
 
     
 def resetting_instances_attributes(objects_with_inherited_features):
@@ -115,7 +126,7 @@ def create_csv_from_objects_unmerged(file_name, objects):
 
     with open(file_name, 'w', newline='',encoding='utf_8_sig') as csvfile:
     # with open(file_name, 'w', newline='',encoding='cp932') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames, extrasaction='ignore')
         writer.writeheader()
 
         for obj in objects:
@@ -627,6 +638,9 @@ def additional_features(objects):
         setattr(eachobject, 'Advance_Date', advance_date)
         setattr(eachobject, '繰上不可(×）', None if advance_date is None else getattr(eachobject, '繰上不可(×）'))
 
+        if eachobject.品名.startswith('MB-ｵﾘﾝﾋﾟｱ'):
+            setattr(eachobject,'荷姿','コンテナ')
+
 
 
 def create_objects_with_inherited_features(first_csv, second_csv):
@@ -709,46 +723,88 @@ file1=f'{line_name}_planning.csv'
 
 # new_orders_file=f'new_orders.csv'
 new_orders_file=f'new_orders__.csv'
+KO_SLICE=True
 
 # file2='reorder_data_2024_3_月.csv'
+previous_output =pd.read_csv(file1,encoding='utf_8_sig')
+previous_output['生産日'] =pd.to_datetime(previous_output['生産日'])
 
-start = '03/01/2024'
-end = '03/08/2024'
+previous_output['start'] =pd.to_datetime(previous_output['start'])
+previous_output['end'] =pd.to_datetime(previous_output['end'])
 
-# start = '04/5/2023'
-# end = '04/17/2023'
+start = '2024/03/03'
+end = '2024/03/05'
+date_format = '%Y/%m/%d'
 
+if line_name =='KO' and KO_SLICE:
+    
+    start= '2024/3/4  4:45:00'
+    end= '2024/3/5  18:28:00'
+    date_format = '%Y/%m/%d  %H:%M:%S'
+
+# else:
+    
+    
+# Convert the strings to datetime objects
+start_dt = datetime.strptime(start, date_format)
+end_dt = datetime.strptime(end, date_format)
 # saturdays=['04/08/2023','04/15/2023']
 holiday_from= None
 holiday_to= None
 
-previous_output=pd.read_csv(file1,encoding='utf_8_sig')
-previous_output['生産日']=pd.to_datetime(previous_output['生産日'])
+if line_name=='KO' and KO_SLICE:
+    # start= '2024/3/4  4:45:00'
+    # end= '2024/3/5  18:28:00'
+    # date_format = '%Y/%m/%d  %H:%M:%S'
 
-previous_output['start']=pd.to_datetime(previous_output['start'])
+    start_date=start_dt.date()
+    end_date=end_dt.date()
+
+    current_target=previous_output[(previous_output['start']>=start_dt) & (previous_output['end']<=end_dt)]
+    
+
+    before_jyunban= int(current_target[current_target['順番'].notna()].head(1)['順番'].values[0])#current_target['順番']
+    after_jyunban= int(current_target[current_target['順番'].notna()].tail(1)['順番'].values[0])
+
+    print(before_jyunban)
+    print(after_jyunban)
+
+    # if before_jyunban>1:
+
+    #     print(start_dt.date())
+        # print(previous_output['生産日'].head(15).values())
+        # exit()
+    pre_object=previous_output[(previous_output['end'].dt.date==pd.to_datetime(start_dt.date())) & (previous_output['順番']==before_jyunban-1)]
+
+    post_object=previous_output[(previous_output['start'].dt.date==pd.to_datetime(start_dt.date())) & (previous_output['順番']==after_jyunban+1)]
+
+    pre_object.to_csv('pre_object.csv',index=False,encoding='utf_8_sig')
+    post_object.to_csv('post_object.csv',index=False,encoding='utf_8_sig')
+    previous_output=previous_output[(previous_output['start']<start_dt) | (previous_output['end']>end_dt)]
+
+    print(pre_object)
+    print(post_object)
+
+    exit()
 
 
+else:
 
-# objects_with_inherited_features = copy.deepcopy(objects_with_inherited_features_deep_copy)
+    current_target=previous_output[(previous_output['生産日']>=start_dt) & (previous_output['生産日']<=end_dt)]
+    previous_output=previous_output[(previous_output['生産日']<start_dt) | (previous_output['生産日']>end_dt)]
 
-start_date=datetime.strptime(start, '%m/%d/%Y')
-end_date=datetime.strptime(end, '%m/%d/%Y')
-
-current_target=previous_output[(previous_output['生産日']>=start_date) & (previous_output['生産日']<=end_date)]
-
-previous_output=previous_output[(previous_output['生産日']<start_date) | (previous_output['生産日']>end_date)]
 
 previous_output.to_csv('previous_output.csv',encoding='utf_8_sig',index=False)
+current_target.to_csv('current_target.csv',encoding='utf_8_sig',index=False)
 
-# exit()
+
 for ind,row in current_target.iterrows():
     if row.fix==1:
         # print(row['start'].date())
         current_target.at[ind,'繰上不可(×）']= str(row['start'].date())#row['生産日']
-        string_date=str(row['生産日'].year)+str(row['生産日'].month).zfill(2)+str(row['生産日'].day).zfill(2)
+        string_date=str(row['start'].year)+str(row['start'].month).zfill(2)+str(row['start'].day).zfill(2)
         current_target.at[ind,'納期']=string_date
-# print(f"total length of current_target: {len(current_target)}")
-# exit()
+
        
 current_target=current_target[['繰上不可(×）','依頼日','品目コード','品名','入目','予定数量(㎏)','納期','チケットＮＯ','fix']]
 current_target['繰上不可(×）']=current_target['繰上不可(×）'].astype(str)
@@ -759,42 +815,42 @@ current_target['納期']=current_target['納期'].astype(str)
 current_target.to_csv('current_target.csv',encoding='utf_8_sig',index=False)
 # exit()
 objects_with_inherited_features=manufacture_multiple_files(current_target)
-# print(f"total length of current_target: {len(objects_with_inherited_features)}")
-# exit()
-# create_csv_from_objects_unmerged(f'Target_data.csv', objects_with_inherited_features)
-# exit()
-
 
 #reading new orders for given deadline
 new_orders=pd.read_csv(new_orders_file,encoding='utf_8_sig')
 new_orders=new_orders[['繰上不可(×）','依頼日','品目コード','品名','入目','予定数量(㎏)','納期','チケットＮＯ']]
-# new_orders['繰上不可(×）']=new_orders['繰上不可(×）'].astype(str)
-# new_orders['納期']=new_orders['納期'].astype(str)
 
-
-# print(new_orders)
-# exit()
 objects_with_inherited_features_new_order= manufacture_multiple_files(new_orders)
-
-# print("the length of new order")
-# print(len(objects_with_inherited_features_new_order))
-
-
 objects_with_inherited_features=objects_with_inherited_features+objects_with_inherited_features_new_order
 
-print(f'the length of inheritated features {len(objects_with_inherited_features)}')
-# exit()
-# for ele in objects_with_inherited_features:
-#     print(ele.品名)
-#     print(ele.納期_copy)
+# Convert start and end times to datetime objects
+start_datetime = pd.to_datetime(start)
+end_datetime = pd.to_datetime(end)
+
+# Generate dates between start and end (excluding start and end dates)
+# Normalize the start and end dates to remove the time component
+start_date = start_datetime.normalize()
+end_date = end_datetime.normalize()
+
+# Create a date range between the day after the start date and the day before the end date
+if start_date + pd.Timedelta(days=1) <= end_date - pd.Timedelta(days=1):
+    in_between_dates = pd.date_range(
+        start=start_date + pd.Timedelta(days=1),
+        end=end_date - pd.Timedelta(days=1),
+        freq='D'
+    )
+else:
+    in_between_dates = pd.DatetimeIndex([])
+
+# Set time component of in-between dates to 00:00:00
+in_between_dates = in_between_dates.normalize()
+
+# Combine start datetime, in-between dates, and end datetime
+dat = pd.DatetimeIndex([start_datetime] + list(in_between_dates) + [end_datetime])
+
+# print(dat)
 
 # exit()
-#making sure that the planning happens for the start date as well
-date_object = datetime.strptime(start, '%m/%d/%Y')
-# Reformat the date string to 'YYYY-MM-DD'
-formatted_date = date_object.strftime('%Y-%m-%d')
-
-dat=pd.date_range(start, end)
 
 master_sunday_data=[ele for ele in objects_with_inherited_features if ele.品名.startswith('ﾏﾙﾆｼﾛ')]#[0]
 if len(master_sunday_data)>1:
@@ -815,7 +871,64 @@ for days in dat:
 length_non_used_data = sys.maxsize
 
 MK_LIST2,FK_LIST2,KO_LIST2=[],[],[]
-# all_inherited_features=copy.deepcopy(objects_with_inherited_features)
+
+dates_with_features=[]
+for each_date in dat:
+
+    long_break_start_time_MK=[]#each_date+timedelta(hours=11)+timedelta(minutes=30)
+    long_break_start_time_FK=[]#[each_date+timedelta(hours=11)+timedelta(minutes=30)]
+    long_break_start_time_KO=[]#[each_date+timedelta(hours=11)+timedelta(minutes=30)]
+
+
+    break_duration_in_hour_MK=[]#[60]
+    break_duration_in_hour_FK=[]#[60]
+    break_duration_in_hour_KO=[]#[60]
+
+
+    if each_date.day_name()=='Sunday':
+        long_break_start_time_MK=[]
+        long_break_start_time_FK=[]
+        long_break_start_time_KO=[]
+
+        break_duration_in_hour_MK=[]
+        break_duration_in_hour_FK=[]
+        break_duration_in_hour_KO=[]
+
+    every_line_break_pattern={}
+    every_line_break_pattern['MK_break_pattern']={}
+    every_line_break_pattern['FK_break_pattern']={}
+    every_line_break_pattern['KO_break_pattern']={}
+
+
+
+    for index,each_brake in enumerate(long_break_start_time_MK):
+        # Ensure 'MK_break_pattern' key exists and add new nested dictionaries under it
+        if 'MK_break_pattern' not in every_line_break_pattern:
+            every_line_break_pattern['MK_break_pattern'] = {}
+        every_line_break_pattern['MK_break_pattern'][f'break{index}']= {'break':each_brake,f'break_duration':break_duration_in_hour_MK[index]}
+
+    for index,each_brake in enumerate(long_break_start_time_FK):
+        #Ensure 'FK_break_pattern' key exists and add new nested dictionaries under it
+
+        if 'FK_break_pattern' not in every_line_break_pattern:
+            every_line_break_pattern['FK_break_pattern'] = {}
+
+        every_line_break_pattern['FK_break_pattern'][f'break{index}']= {'break':each_brake,f'break_duration':break_duration_in_hour_FK[index]}
+
+    for index,each_brake in enumerate(long_break_start_time_KO):
+        #Ensure 'FK_break_pattern' key exists and add new nested dictionaries under it
+
+        if 'KO_break_pattern' not in every_line_break_pattern:
+            every_line_break_pattern['KO_break_pattern'] = {}
+
+        every_line_break_pattern['KO_break_pattern'][f'break{index}']= {'break':each_brake,f'break_duration':break_duration_in_hour_KO[index]}
+
+    each_date_feature= Date_Class(each_date,every_line_break_pattern)
+
+    
+    dates_with_features.append(each_date_feature)
+
+
 
 
 
@@ -823,11 +936,11 @@ dates=[]
 MK_LIST1,FK_LIST1,KO_LIST1=[],[],[]
 
 
-for ele in dat:
-    if  ele.day_name()!='Saturday' and ele not in dat2:#ele.day_name()!='Sunday' and
+for ele in dates_with_features:
+    if  ele.date.day_name()!='Saturday' and ele.date not in dat2:#ele.day_name()!='Sunday' and
         dates.append(ele)
 
-    if ele.day_name()=='Saturday' or ele==dat[-1]:
+    if ele.date.day_name()=='Saturday' or ele==dates_with_features[-1]:
 
         # optimizer_list=[0,1,2,3,4,5,6,7,8]
         optimizer_list=[0]
@@ -839,31 +952,31 @@ for ele in dat:
             non_used_data,MK_LIST,FK_LIST,KO_LIST=priority_replanning.schedule_manager(objects_with_inherited_features,dates,master_sunday_data,optimization_value,line_name,see_future=14,dat2=dat2,arg='planning')
 
             prior_value=0
-            yusen_non_used_data = [task for task in non_used_data if getattr(task,'納期_copy')>=ele and getattr(task,'納期_copy')<=ele+timedelta(days=7)]
+            yusen_non_used_data=[task for task in non_used_data if getattr(task,'納期_copy')>=ele.date and getattr(task,'納期_copy')<=ele.date+timedelta(days=7)]
             for task in yusen_non_used_data:
 
-                if task.納期_copy==ele:
+                if task.納期_copy==ele.date:
                     prior_value+=1600
 
-                if task.納期_copy==ele+timedelta(days=1):
+                if task.納期_copy==ele.date+timedelta(days=1):
                     prior_value+=700
 
-                elif task.納期_copy==ele+timedelta(days=2):
+                elif task.納期_copy==ele.date+timedelta(days=2):
                     prior_value+=600
 
-                elif task.納期_copy==ele+timedelta(days=3):
+                elif task.納期_copy==ele.date+timedelta(days=3):
                     prior_value+=500
 
-                elif task.納期_copy==ele+timedelta(days=4):
+                elif task.納期_copy==ele.date+timedelta(days=4):
                     prior_value+=400
 
-                elif task.納期_copy==ele+timedelta(days=5):
+                elif task.納期_copy==ele.date+timedelta(days=5):
                     prior_value+=300
 
-                elif task.納期_copy==ele+timedelta(days=6):
+                elif task.納期_copy==ele.date+timedelta(days=6):
                     prior_value+=200
 
-                elif task.納期_copy==ele+timedelta(days=7):
+                elif task.納期_copy==ele.date+timedelta(days=7):
                     prior_value+=100
 
 
@@ -872,6 +985,11 @@ for ele in dat:
             least_non_used_data_list.append(prior_value)
 
             resetting_instances_attributes(objects_with_inherited_features)
+
+            #the flags were made 0 so reset it to its original state
+            for att in dates:
+                att.UDF=att.old_UDF
+
 
         
 

@@ -11,12 +11,71 @@ from time import sleep
 
 # import ganttchart
 # import datetime
+def adjust_for_user_defined_breaks(ko_start_time, product_duration, user_defined_breaks,dates,funname=None):
+    """
+    Adjusts ko_start_time to avoid overlapping with any user-defined break periods.
+
+    If scheduling a product from ko_start_time would overlap with a user-defined break,
+    adjust ko_start_time to the end of the break.
+
+    Returns:
+        datetime: Adjusted ko_start_time that does not overlap with any user-defined breaks.
+    """
+
+    backup_ko_start_time=ko_start_time
+    success=False
+    while True:
+
+        ko_end_time = ko_start_time + product_duration
+        adjusted = False
+        i=0
+
+
+        for break_start, break_end in user_defined_breaks:
+            # Check if scheduling from ko_start_time would overlap with the break
+
+            if ko_start_time < break_end and ko_end_time > break_start:
+
+                if ko_start_time < break_start:
+ 
+                    ko_start_time = break_end
+                    
+                elif ko_start_time >= break_start and ko_start_time < break_end:
+                    # Current time is during the break; set ko_start_time to break_end
+                    ko_start_time = break_end
+                # Recalculate ko_end_time after adjustment
+                ko_end_time = ko_start_time + product_duration
+                adjusted = True
+                success=True
+                break  # Recheck all breaks from the new ko_start_time
+        if not adjusted:
+            break
+    
+    if success:
+        matching_date=[ele for ele in dates if getattr(ele,'date')== backup_ko_start_time.replace(hour=0,minute=0)]
+        if len(matching_date):
+            setattr(matching_date[0],'UDF',0)
+
+    for each_date in dates:
+        elements=each_date.date
+        new_ko =backup_ko_start_time.replace(hour=0,minute=0)
+        
+        for break_start, break_end in user_defined_breaks:
+        # Check if scheduling from ko_start_time would overlap with the break
+            if ko_start_time > break_end and ko_start_time.date()==break_end.date() and ko_start_time.date()==each_date.date and each_date.UDF==1:
+                break_duration =break_end-break_start
+                ko_start_time=ko_start_time+break_duration
+
+
+    return ko_start_time
+
 
 class Line_select:
     def __init__(self,line,current_date,cleaning_time,Magarin):
         self.line=line
         self.magarin=Magarin
         self.cleaning_time=cleaning_time
+        self.NO_six_dict=0
         self.set_time_for_line(line,current_date,Magarin)
 
     def set_time_for_line(self,line,current_date,Magarin):
@@ -47,15 +106,59 @@ class Line_select:
                 elif current_date.day_name()=='Saturday':
                     self.end_time=current_date+timedelta(hours=23)
 
-
-
             self.day_breaktime_flag={}
-            for i in range(self.start_time.day,self.end_time.day):
+            self.morning_break_flag={}
+            self.evening_break_flag={}
+            for i in range(self.start_time.day,self.end_time.day+1):
                 self.day_breaktime_flag[i]=0
-
+                self.morning_break_flag[i]=0
+                self.evening_break_flag[i]=0
         if line=='KO' and Magarin:
             self.start_time=current_date+timedelta(minutes=440)
             self.end_time=current_date+timedelta(minutes=440)
+
+def find_pairs_summing_to_4531(instances):
+    """
+    This function searches through the given list of instances and returns a flat list of instances
+    that are part of any group whose '予定数量(㎏)' sum up to 4531.
+    If no such groups exist, it returns an empty list.
+    """
+    from itertools import combinations
+
+    # Convert '予定数量(㎏)' to float and store instances with their weights
+    instances_with_weights = []
+    for inst in instances:
+        if hasattr(inst, '予定数量(㎏)'):
+            weight = float(getattr(inst, '予定数量(㎏)'))
+            instances_with_weights.append((weight, inst))
+
+    # Sort instances by weight for efficient processing
+    instances_with_weights.sort(key=lambda x: x[0])
+
+    # This set will hold all instances that are part of valid groups
+    valid_instances = set()
+
+    # We can search for combinations of 1 up to N instances
+    N = len(instances_with_weights)
+
+    # Set the maximum group size based on expected group sizes
+    max_group_size = 2  # Adjust this value as needed
+
+    for group_size in range(1, max_group_size + 1):
+        # Generate all combinations of the given size
+        for group in combinations(instances_with_weights, group_size):
+            group_weights = [weight for weight, inst in group]
+            total_weight = sum(group_weights)
+            if abs(total_weight - 4531) < 0.01:  # Allowing a small tolerance
+                # Add instances to the set of valid instances
+                for weight, inst in group:
+                    valid_instances.add(inst)
+
+    # Convert the set to a list to return
+    return list(valid_instances)
+
+
+
 
 def resetting_instances_attributes(objects_with_inherited_features):
         for eachobject in objects_with_inherited_features:
@@ -79,7 +182,7 @@ def resetting_instances_attributes(objects_with_inherited_features):
 def convert_fullwidth_to_halfwidth(text):
     return jaconv.z2h(text, kana=True, digit=False, ascii=False)
 
-def premium_ace_allocation(MK_line_total_time,MK,premium_ace_in_general,counter,allowable_time,elements):
+def premium_ace_allocation(MK_line_total_time,MK,premium_ace_in_general,counter,allowable_time,elements,MK_break_duration_list,MK_break_start):
     
     premium_ace_list=[]
 
@@ -89,6 +192,8 @@ def premium_ace_allocation(MK_line_total_time,MK,premium_ace_in_general,counter,
             MK_line_total_time=MK_line_total_time-MK.cleaning_time-getattr(ele,'MK流量_time')
             setattr(ele,'get_used',1)
     
+
+    time_to_reach_break_mins=0
     for ele in premium_ace_list:
         if getattr(ele,'pushed_forward')==1:
             allowable_time=allowable_time+timedelta(hours=3)
@@ -97,6 +202,39 @@ def premium_ace_allocation(MK_line_total_time,MK,premium_ace_in_general,counter,
         after_time=before_time+timedelta(minutes=getattr(ele,'MK流量_time'))
         allowable_time=after_time+timedelta(minutes=MK.cleaning_time)
         # this_linetotal_time=this_linetotal_time-getattr(ele,'MK流量_time')-MK.cleaning_time
+        print(f"before_time {before_time}")
+        print(f"after_time {after_time}")
+        print('brakes')
+        print(MK_break_duration_list,MK_break_start)
+        
+        for index, (duration,break_start) in enumerate(zip(MK_break_duration_list,MK_break_start)):
+
+            print(f'break start {break_start}')
+
+            if before_time<break_start and allowable_time> break_start:
+                time_to_reach_break= break_start-before_time
+
+                print(f'time_to_reach_break: {time_to_reach_break}')
+
+                time_to_reach_break_mins+=time_to_reach_break.total_seconds() / 60
+
+                before_time= break_start+timedelta(minutes=duration)
+
+                after_time=before_time+timedelta(minutes=getattr(ele,'MK流量_time'))
+                allowable_time=after_time+timedelta(minutes=MK.cleaning_time)
+
+                
+
+                break
+        
+        if allowable_time>elements+timedelta(hours=23):
+            break
+
+        # print('i executed')
+        # exit()
+
+
+
         setattr(ele,'slot',f'{before_time}-->{after_time}')
         setattr(ele,'順番',counter)
         setattr(ele,'生産日',elements.date())
@@ -105,12 +243,23 @@ def premium_ace_allocation(MK_line_total_time,MK,premium_ace_in_general,counter,
         setattr(ele,'day',f'{after_time.day_name()}')
         counter+=1
 
+
+    for ele in premium_ace_list:
+        if getattr(ele,'生産日')==None:
+            setattr(ele,'get_used',0)     
+        MK_line_total_time=MK_line_total_time+MK.cleaning_time+getattr(ele,'MK流量_time')
+
+    premium_ace_list=[ele for ele in premium_ace_list if getattr(ele,'get_used')==1]
+
+    MK_line_total_time=MK_line_total_time-time_to_reach_break_mins
+    
+
     return premium_ace_list,counter,MK_line_total_time,allowable_time
 
 
 
 
-def canned_data_allocation(MK_line_total_time,MK,canned_data,counter,allowable_time,elements,moto_canned_data):
+def canned_data_allocation(MK_line_total_time,MK,canned_data,counter,allowable_time,elements,moto_canned_data,MK_break_duration_list,MK_break_start):
 
     canned_list=[]
     for ele in canned_data:
@@ -143,7 +292,7 @@ def canned_data_allocation(MK_line_total_time,MK,canned_data,counter,allowable_t
 
 
     
-
+    time_to_reach_break_mins=0
     for ele in canned_list:
         if getattr(ele,'pushed_forward')==1:
             allowable_time=allowable_time+timedelta(hours=3)
@@ -152,6 +301,25 @@ def canned_data_allocation(MK_line_total_time,MK,canned_data,counter,allowable_t
         after_time=before_time+timedelta(minutes=getattr(ele,'MK流量_time'))
         allowable_time=after_time+timedelta(minutes=MK.cleaning_time)
         # this_linetotal_time=this_linetotal_time-getattr(ele,'MK流量_time')-MK.cleaning_time
+
+        for index, (duration,break_start) in enumerate(zip(MK_break_duration_list,MK_break_start)):
+            if before_time<break_start and allowable_time> break_start:
+                time_to_reach_break= break_start-before_time
+                time_to_reach_break_mins+=time_to_reach_break.total_seconds() / 60
+
+                before_time= break_start+timedelta(minutes=duration)
+
+                after_time=before_time+timedelta(minutes=getattr(ele,'MK流量_time'))
+                allowable_time=after_time+timedelta(minutes=MK.cleaning_time)
+
+                break
+        
+        if allowable_time>elements+timedelta(hours=23):
+            break
+
+
+
+
         setattr(ele,'slot',f'{before_time}-->{after_time}')
         setattr(ele,'順番',counter)
         setattr(ele,'生産日',elements.date())
@@ -160,37 +328,74 @@ def canned_data_allocation(MK_line_total_time,MK,canned_data,counter,allowable_t
         setattr(ele,'day',f'{after_time.day_name()}')
         counter+=1
 
+    for ele in canned_list:
+        if getattr(ele,'生産日')==None:
+            setattr(ele,'get_used',0)     
+        MK_line_total_time=MK_line_total_time+MK.cleaning_time+getattr(ele,'MK流量_time')
+
+
+    #the time to reach break will not be used. becasue this is the time in between last allocated one and break time 
+    # where nothing can be allocated. so is useless time
+    MK_line_total_time=MK_line_total_time-time_to_reach_break_mins
+
+    canned_list=[ele for ele in canned_list if getattr(ele,'get_used')==1]
 
 
     return canned_list,counter,MK_line_total_time,allowable_time
 
 
-
-def mk_tokusyouhin_handler(E_Group,line,elements,attribute,counter,line_total_time,allowable_time):
+def mk_tokusyouhin_handler(E_Group,line,elements,attribute,counter,line_total_time,allowable_time,MK_break_duration_list,MK_break_start):
     e1_group=[]
 
     for ele in E_Group:
-        if line_total_time-line.cleaning_time-getattr(ele,attribute)>0:
+        if line_total_time-line.cleaning_time-getattr(ele,attribute)>0: #240 is 4hrs required for cleaning after E_Group
             e1_group.append(ele)
             line_total_time=line_total_time-line.cleaning_time-getattr(ele,attribute)
-            setattr(ele,'get_used',1)
-
-    
+    time_to_reach_break_mins=0     
     for ele in e1_group:
 
         before_time=allowable_time
         after_time=before_time+timedelta(minutes=getattr(ele,attribute))
         allowable_time=after_time+timedelta(minutes=line.cleaning_time)
 
+        
+        for index, (duration,break_start) in enumerate(zip(MK_break_duration_list,MK_break_start)):
+            if before_time<break_start and allowable_time> break_start:
+                time_to_reach_break= break_start-before_time
+                time_to_reach_break_mins+=time_to_reach_break.total_seconds() / 60
+
+                before_time= break_start+timedelta(minutes=duration)
+
+                after_time=before_time+timedelta(minutes=getattr(ele,'MK流量_time'))
+                allowable_time=after_time+timedelta(minutes=line.cleaning_time)
+
+                break
+        
+        if allowable_time>elements+timedelta(hours=23):
+            break
+
         setattr(ele,'slot',f'{before_time}-->{after_time}')
         setattr(ele,'順番',counter)
         setattr(ele,'生産日',elements.date())
         setattr(ele,'start',f'{before_time}')
         setattr(ele,'end',f'{after_time}')
         setattr(ele,'day',f'{after_time.day_name()}')
+        setattr(ele,'get_used',1)
 
 
         counter+=1
+
+    #this is to compensate the time which was reduced but was not allocated
+    e1_unused=[ele for ele in e1_group if getattr(ele,'get_used')==0]
+    for ele in e1_unused:
+        line_total_time=line_total_time+line.cleaning_time+getattr(ele,attribute)
+
+    #reducing that time which can not be used because the time between berak and last allocated 
+    # object is so small that it can not be allocated
+    line_total_time=line_total_time-time_to_reach_break_mins
+    
+
+    e1_group=[ele for ele in e1_group if getattr(ele,'get_used')==1]
 
     if len(e1_group):
         allowable_time=allowable_time+timedelta(hours=4)
@@ -356,31 +561,87 @@ def grouping(instances,groupname):
 
     return instances
 
+# def sorting_FHA6(instances):
+
+#     # Split instances into three groups
+#     pre_instances = []
+#     xyz_instances = []
+#     post_instances = []
+#     post = False
+
+#     for instance in instances:
+#         if hasattr(instance, '品名') and not instance.品名.startswith('FH-A6') and not post:
+
+#             pre_instances.append(instance)
+#         elif hasattr(instance, '品名') and instance.品名.startswith('FH-A6'):
+#             post=True
+#             xyz_instances.append(instance)
+#         else:
+#             post=True
+#             post_instances.append(instance)
+
+#     xyz_instances=sorted(xyz_instances, key=lambda instance: int(getattr(instance,'予定数量(㎏)')))
+
+#     # Concatenate the lists to get the final list
+#     instances = pre_instances + xyz_instances + post_instances
+
+#     return instances
+
 def sorting_FHA6(instances):
 
-    # Split instances into three groups
+    # Split instances into pre_instances, fha6_instances, post_instances
     pre_instances = []
-    xyz_instances = []
+    fha6_instances = []
     post_instances = []
-    post = False
 
+    fha6_started = False  # Flag to check if 'FH-A6' instances have started
     for instance in instances:
-        if hasattr(instance, '品名') and not instance.品名.startswith('FH-A6') and not post:
-
+        if hasattr(instance, '品名') and instance.品名.startswith('FH-A6'):
+            fha6_started = True
+            fha6_instances.append(instance)
+        elif not fha6_started:
             pre_instances.append(instance)
-        elif hasattr(instance, '品名') and instance.品名.startswith('FH-A6'):
-            post=True
-            xyz_instances.append(instance)
         else:
-            post=True
             post_instances.append(instance)
 
-    xyz_instances=sorted(xyz_instances, key=lambda instance: int(getattr(instance,'予定数量(㎏)')))
+    # Process fha6_instances to form groups summing to 4531
+    # Convert '予定数量(㎏)' to int and store in a list of tuples (weight, instance)
+    fha6_weights = [(int(getattr(inst, '予定数量(㎏)')), inst) for inst in fha6_instances]
+
+    # Sort fha6_weights by weight ascending
+    fha6_weights.sort(key=lambda x: x[0])
+
+    # Now create groups such that each group's sum is as close as possible to 4531
+    groups = []
+    while fha6_weights:
+        min_weight, min_instance = fha6_weights.pop(0)
+        target_weight = 4531 - min_weight
+
+        # Find the instance with weight closest to target_weight without exceeding it
+        possible_indices = [idx for idx, (weight, _) in enumerate(fha6_weights) if weight <= target_weight]
+        if possible_indices:
+            idx = max(possible_indices, key=lambda idx: fha6_weights[idx][0])
+            matched_weight, matched_instance = fha6_weights.pop(idx)
+            group = [(min_weight, min_instance), (matched_weight, matched_instance)]
+        else:
+            # No suitable match, group the min_instance alone
+            group = [(min_weight, min_instance)]
+
+        # Sort the group in ascending order of weight
+        group_sorted = sorted(group, key=lambda x: x[0])
+
+        # Add the group to the groups list in the order they are created
+        groups.append(group_sorted)
+
+    # Flatten the groups into fha6_instances_ordered in the order they were created
+    fha6_instances_ordered = [inst for group in groups for (_, inst) in group]
 
     # Concatenate the lists to get the final list
-    instances = pre_instances + xyz_instances + post_instances
+    instances = pre_instances + fha6_instances_ordered + post_instances
 
     return instances
+
+
 
 def grouping_two_groups_consecutively(instances,groupname1,groupname2,newycs=None):
 
@@ -1003,14 +1264,14 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
     
     Magarin=False
   
-    for elements in dates:
-
+    for each_date_object in dates:
+        elements = each_date_object.date
         ko_slicing=False
-        if elements.day_name()!='Sunday':
-            cleaning_time=20
-            MK=Line_select('MK',elements,cleaning_time,Magarin=False)
-            FK=Line_select('FK',elements,cleaning_time,Magarin=False)
-            MK_line_total_time,FK_line_total_time=960,960
+        # if elements.day_name()!='Sunday':
+        cleaning_time=20
+        MK=Line_select('MK',elements,cleaning_time,Magarin=False)
+        FK=Line_select('FK',elements,cleaning_time,Magarin=False)
+        MK_line_total_time,FK_line_total_time=900,900
 
         if elements.day_name()=='Sunday' or first_time==0:
             cleaning_time=60
@@ -1034,6 +1295,53 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
             KO=Line_select('KO',elements,cleaning_time,Magarin=True)
             KO_line_total_time=800
             MK_line_total_time,FK_line_total_time=800,800
+
+
+        if elements.day_name()!='Sunday':
+
+            looping_range=len(each_date_object.every_line_break_pattern['MK_break_pattern'])
+            breaks={}
+            if looping_range>0: 
+                breaks= each_date_object.every_line_break_pattern['MK_break_pattern']
+
+            start_time=elements+timedelta(minutes=440)
+
+            MK_total_break_time = 0
+            MK_break_start=[]
+            MK_break_duration_list=[]
+            
+            for index, values in enumerate(breaks):
+
+                break_time= breaks[f'break{index}']['break']
+                break_duration= breaks[f'break{index}']['break_duration']
+                MK_total_break_time+=break_duration
+                MK_break_start.append(break_time)
+                MK_break_duration_list.append(break_duration)
+
+            MK_line_total_time = MK_line_total_time-MK_total_break_time
+
+            looping_range=len(each_date_object.every_line_break_pattern['FK_break_pattern'])
+            breaks={}
+            if looping_range>0: 
+                breaks= each_date_object.every_line_break_pattern['FK_break_pattern']
+
+            start_time=elements+timedelta(minutes=440)
+
+            FK_total_break_time = 0
+            FK_break_start=[]
+            FK_break_duration_list=[]
+            
+            for index, values in enumerate(breaks):
+
+                break_time= breaks[f'break{index}']['break']
+                break_duration= breaks[f'break{index}']['break_duration']
+                FK_total_break_time+=break_duration
+                FK_break_start.append(break_time)
+                FK_break_duration_list.append(break_duration)
+
+            FK_line_total_time = FK_line_total_time-FK_total_break_time
+        
+
 
      
         if elements.day_name()=='Sunday':
@@ -1071,28 +1379,31 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
         today_data=[]
         future_data=[]
         far_future1=[]
-        
 
-        date_series = pd.Series(pd.to_datetime(dates))
+        # print(line_name)
+        # print(dates[-1].date)
+        # print(KO.end_time)
+        # exit()
+        if line_name=='KO' and dates[-1].date< KO.end_time:
+            KO.end_time=dates[-1].date
+            print(KO.start_time.date())
+            print(KO.end_time)
 
-        # Get the last date
-        last_date = date_series.max()
-
-        # Extract the month and day from the last date
-        last_month = last_date.month
-        last_day = last_date.day
 
         for rows_data in Class_Data:
-            if getattr(rows_data,'納期_copy')==start_time and rows_data.get_used==0:
+            if getattr(rows_data,'納期_copy').date()==start_time.date() and rows_data.get_used==0:
                 today_data.append(rows_data)
+
+            
         
-            if getattr(rows_data,'納期_copy')>start_time and rows_data.get_used==0:
-                if getattr(rows_data,'納期_copy')<=(start_time+timedelta(days=see_future1)+timedelta(days=see_future1)):
+            if getattr(rows_data,'納期_copy').date()>start_time.date() and rows_data.get_used==0:
+                if getattr(rows_data,'納期_copy').date()<=(start_time.date()+timedelta(days=see_future1)+timedelta(days=see_future1)):
                     future_data.append(rows_data)
 
             # if getattr(rows_data,'納期_copy')>(start_time+timedelta(days=see_future1)) and getattr(rows_data,'納期_copy')<=(start_time+timedelta(days=see_future))and rows_data.get_used==0:
             #     far_future1.append(rows_data)
-
+        # print(len(today_data))
+        # exit()
         unknown=[ele for ele in Class_Data if ele not in future_data]
    
         far_future1=[ele for ele in far_future1 if ele not in future_data and not ele.品名.startswith('ｿﾌﾄﾌｱｲﾝ') and not ele.品名.startswith('ｿﾌﾄｽﾍﾟｼｬﾙ') and not ele.品名.startswith('ND10') and not ele.品名.startswith('ﾊｲｿﾌﾄ')]
@@ -1178,7 +1489,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
             if eachline=='MK':
 
                 premium_star=False
-                max_batch=8
+                max_batch=100
                 # total_data3=[ele for ele in total_data2 if int(getattr(ele,'予定数量(㎏)'))<=6100 and int(getattr(ele,'MK流量_time'))!=0]
                 total_data3=[ele for ele in total_data2 if  int(getattr(ele,'MK流量_time'))!=0]
                 total_data3=[ele for ele in total_data3 if not ele.品名.startswith('ﾏﾙﾆｼﾛ')]
@@ -1191,8 +1502,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                 for instance in total_data3:
 
                     if getattr(instance,'MK特殊品')=='○' :
-               
-                           
+
                        if i==0:
                             total_data1.append(instance)
                             i+=1
@@ -1239,19 +1549,19 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                 if elements.day_name()=='Monday' or high_softer or len(premium_ace3_today):#
                     total_data=[ele for ele in total_data1 if getattr(ele,'プレミアムスター製品')!='○']
                     far_future=[ele for ele in far_future1 if getattr(ele,'プレミアムスター製品')!='○']
-                    max_batch=10
+                    max_batch=100
 
 
                 elif MK_margarin_nearest_date is None and MK_premium_star_nearest_date is not None and not high_softer:
                     total_data=[ele for ele in total_data1 if getattr(ele,'一般マーガリン製品')!='○']
                     far_future=[ele for ele in far_future1 if getattr(ele,'一般マーガリン製品')!='○']
-                    max_batch=8
+                    max_batch=100
                     premium_star=True
                 
                 elif MK_margarin_nearest_date is not None and MK_premium_star_nearest_date is None:
                     total_data=[ele for ele in total_data1 if getattr(ele,'プレミアムスター製品')!='○']
                     far_future=[ele for ele in far_future1 if getattr(ele,'プレミアムスター製品')!='○']
-                    max_batch=10
+                    max_batch=100
 
                 elif MK_margarin_nearest_date is not None and MK_premium_star_nearest_date is not None and not high_softer:
 
@@ -1259,11 +1569,11 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                         total_data=[ele for ele in total_data1 if getattr(ele,'一般マーガリン製品')!='○']
                         far_future=[ele for ele in far_future1 if getattr(ele,'一般マーガリン製品')!='○']
                         premium_star=True
-                        max_batch=8
+                        max_batch=100
                     else:
                         total_data=[ele for ele in total_data1 if getattr(ele,'プレミアムスター製品')!='○']
                         far_future=[ele for ele in far_future1 if getattr(ele,'プレミアムスター製品')!='○']
-                        max_batch=10                            
+                        max_batch=100                            
 
                 else:
                     if len(far_future1):
@@ -1281,25 +1591,25 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
 
                         if elements.day_name()=='Monday' or high_softer:
                             far_future=[ele for ele in far_future1 if getattr(ele,'プレミアムスター製品')!='○']
-                            max_batch=10
+                            max_batch=100
                             
 
                         elif MK_margarin_nearest_date is not None and MK_premium_star_nearest_date is None :
                             far_future=[ele for ele in far_future1 if getattr(ele,'プレミアムスター製品')!='○']
-                            max_batch=10
+                            max_batch=100
 
                         elif MK_margarin_nearest_date is None and MK_premium_star_nearest_date is not None and not high_softer:
                             far_future=[ele for ele in far_future1 if getattr(ele,'一般マーガリン製品')!='○']
-                            max_batch=8
+                            max_batch=100
                             premium_star=True
 
                         elif MK_margarin_nearest_date is not None and MK_premium_star_nearest_date is not None:
                             if MK_margarin_nearest_date<=MK_premium_star_nearest_date:
                                 far_future=[ele for ele in far_future1 if getattr(ele,'プレミアムスター製品')!='○']
-                                max_batch=10
+                                max_batch=100
                             else:
                                 far_future=[ele for ele in far_future1 if getattr(ele,'一般マーガリン製品')!='○']
-                                max_batch=8
+                                max_batch=100
                                 premium_star=True
 
 
@@ -1308,7 +1618,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
 
 
             elif eachline =='FK':
-                max_batch=10
+                max_batch=100
                 flat_spread=False
                 total_data1=[ele for ele in total_data2 if int(getattr(ele,'予定数量(㎏)'))<=5500 and int(getattr(ele,'FK流量_time'))!=0 and ele.get_used==0]
                 total_data1=[ele for ele in total_data1 if not ele.品名.startswith('ﾏﾙﾆｼﾛ')]
@@ -1349,24 +1659,24 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                 if FK_flat_spread_nearest_date is not None and FK_margarin_nearest_date is None and not high_softer:
                     total_data=[ele for ele in total_data1 if getattr(ele,'一般マーガリン製品')!='○']
                     far_future=[ele for ele in far_future1 if getattr(ele,'一般マーガリン製品')!='○']
-                    max_batch=5
+                    max_batch=100
                     flat_spread=True
 
                 elif FK_flat_spread_nearest_date is None and FK_margarin_nearest_date is not None:
                     total_data=[ele for ele in total_data1 if getattr(ele,'ファットスプレッド製品')!='○']
                     far_future=[ele for ele in far_future1 if getattr(ele,'ファットスプレッド製品')!='○']
-                    max_batch=10
+                    max_batch=100
 
                 elif FK_flat_spread_nearest_date is not None and FK_margarin_nearest_date is not None and not high_softer:
                     if FK_flat_spread_nearest_date<=FK_margarin_nearest_date:
                         total_data=[ele for ele in total_data1 if getattr(ele,'一般マーガリン製品')!='○']
                         far_future=[ele for ele in far_future1 if getattr(ele,'一般マーガリン製品')!='○']
-                        max_batch=5
+                        max_batch=100
                         flat_spread=True
                     else:
                         total_data=[ele for ele in total_data1 if getattr(ele,'ファットスプレッド製品')!='○']
                         far_future=[ele for ele in far_future1 if getattr(ele,'ファットスプレッド製品')!='○']
-                        max_batch=10
+                        max_batch=100
 
                 else:
                     if len(far_future1):
@@ -1383,22 +1693,22 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
 
                         if FK_margarin_nearest_date is None and FK_flat_spread_nearest_date is not None and not high_softer:
                             far_future=[ele for ele in far_future1 if getattr(ele,'一般マーガリン製品')!='○']
-                            max_batch=5
+                            max_batch=100
                             flat_spread=True
 
 
                         elif FK_margarin_nearest_date is not None and FK_flat_spread_nearest_date is None:
                             far_future=[ele for ele in far_future1 if getattr(ele,'ファットスプレッド製品')!='○']
-                            max_batch=10
+                            max_batch=100
 
                         elif FK_margarin_nearest_date is not None and FK_flat_spread_nearest_date is not None:
                             if FK_flat_spread_nearest_date<=FK_margarin_nearest_date:
                                 far_future=[ele for ele in far_future1 if getattr(ele,'一般マーガリン製品')!='○']
-                                max_batch=5
+                                max_batch=100
                                 flat_spread=True
                             else:
                                 far_future=[ele for ele in far_future1 if getattr(ele,'ファットスプレッド製品')!='○']
-                                max_batch=10
+                                max_batch=100
                         # else:
                         #     far_future=[ele for ele in far_future1]
                 if len(total_data):
@@ -1410,14 +1720,14 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                 
 
             elif eachline=='KO':
-                total_data1=[ele for ele in total_data2 if int(getattr(ele,'予定数量(㎏)'))<=4800  and int(getattr(ele,'KO流量_time'))!=0 and getattr(ele,'窒素ガス')!='○']
+                total_data1=[ele for ele in total_data2 if int(getattr(ele,'予定数量(㎏)'))<=4800  and int(getattr(ele,'KO流量_time'))!=0]#and getattr(ele,'窒素ガス')!='○'
                 total_data=[ele for ele in total_data1]
-                far_future=[ele for ele in far_future1 if int(getattr(ele,'予定数量(㎏)'))<=4800  and int(getattr(ele,'KO流量_time'))!=0 and getattr(ele,'窒素ガス')!='○']
+                far_future=[ele for ele in far_future1 if int(getattr(ele,'予定数量(㎏)'))<=4800  and int(getattr(ele,'KO流量_time'))!=0]# and getattr(ele,'窒素ガス')!='○'
 
                 ko_slice=[ele for ele in total_data1 if getattr(ele,'KOスライス製品')=='○']
 
-                print(f'total data1 length= {len(total_data1)}')
-                print(f'far_futurelength= {len(far_future)}')
+                # print(f'total data1 length= {len(total_data1)}')
+                # print(f'far_futurelength= {len(far_future)}')
                 # exit()
 
 
@@ -1425,10 +1735,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                     ko_slice=[]
                     Magarin=True
   
-                print(f"first length of future groups is {len(far_future)}")
-
-
-               
+                # print(f"first length of future groups is {len(far_future)}")
 
                 probhibited_hour=[23,0,1,2,3,4,5,6]
                 non_mb_orimpia=[ele for ele in ko_slice if not ele.品名.startswith('MB-ｵﾘﾝﾋﾟｱ')]
@@ -1464,7 +1771,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                         KO_line_total_time=800#840
 
                         if elements.day_name()!='Saturday':
-                            KO_line_total_time=960
+                            KO_line_total_time=900
                         
                         #KO_line_total_time=1320
                     else:
@@ -1749,13 +2056,13 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                             far_remaining_line_last=[]
                             # for ele in subete_ikeru_task:
 
-                            total_data=[ele for ele in total_data1 if getattr(ele,'KOスライス製品')!='○' and getattr(ele,'窒素ガス')!='○']
-                            far_future=[ele for ele in far_future1 if getattr(ele,'KOスライス製品')!='○' and getattr(ele,'窒素ガス')!='○']
+                            total_data=[ele for ele in total_data1 if getattr(ele,'KOスライス製品')!='○']# and getattr(ele,'窒素ガス')!='○'
+                            far_future=[ele for ele in far_future1 if getattr(ele,'KOスライス製品')!='○']# and getattr(ele,'窒素ガス')!='○'
                             # far_future=[]
                             Magarin=True
                             cleaning_time=20
                             KO=Line_select('KO',elements,cleaning_time,Magarin)
-                            KO_line_total_time=960
+                            KO_line_total_time=900
 
                             for task in total_data:
 
@@ -1923,7 +2230,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
             
             # Desired order
             if eachline=='MK' and premium_star:
-                name_prefix_order = ["ﾌﾟﾗｽﾞﾏAR","ﾌﾟﾗｽﾞﾏNFC","ﾌﾟﾚﾐｱﾑｽﾀ-DX","ﾌﾟﾗｽﾞﾏDX","ｱﾛﾏｽﾀｰ","ｴﾚﾊﾞｰﾙｿﾌﾄ"]
+                name_prefix_order = ["ﾌﾟﾗｽﾞﾏAR","ﾌﾟﾚﾐｱﾑｽﾀｰ","ﾌﾟﾗｽﾞﾏNFC","ﾌﾟﾚﾐｱﾑｽﾀ-DX","ﾌﾟﾗｽﾞﾏDX","ｱﾛﾏｽﾀｰ","ｴﾚﾊﾞｰﾙｿﾌﾄ"]
                 plasmaAR=False
                 for premium_products in arerugen_check_list:
                     if premium_products.品名.startswith("ﾌﾟﾗｽﾞﾏAR"):
@@ -1935,7 +2242,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                     current_group = order_objects_by_name_prefix(current_group, name_prefix_order)
 
                 else:
-                    name_prefix_order = ["ﾌﾟﾚﾐｱﾑｽﾀｰ","ﾌﾟﾗｽﾞﾏNFC","ﾌﾟﾚﾐｱﾑｽﾀ-DX","ﾌﾟﾗｽﾞﾏDX","ｱﾛﾏｽﾀｰ","ﾛｰﾚﾙｽﾀｰ"]
+                    name_prefix_order = ["ﾌﾟﾗｽﾞﾏAR","ﾌﾟﾚﾐｱﾑｽﾀｰ","ﾌﾟﾗｽﾞﾏNFC","ﾌﾟﾚﾐｱﾑｽﾀ-DX","ﾌﾟﾗｽﾞﾏDX","ｱﾛﾏｽﾀｰ","ﾛｰﾚﾙｽﾀｰ"]
 
                     # Ordering objects
                     arerugen_check_list = order_objects_by_name_prefix(arerugen_check_list, name_prefix_order)
@@ -1981,76 +2288,56 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                 attribute_line='MK流量_time'
                 Egroup_bool=[el for el in E_Group if getattr(el,'納期_copy')==elements]
 
-                # if elements.month==4:
-                #     if elements.day>=5 and len(E_Group)>0:
-                #         e1_group,counter,MK_line_total_time,allowable_time=mk_tokusyouhin_handler(E_Group,MK,elements,attribute_line,counter,MK_line_total_time,allowable_time)
+                E_Group= [ele for ele in E_Group if getattr(ele,'get_used')==0]
+                premium_ace_in_general=[ele for ele in premium_ace_in_general if getattr(ele,'get_used')==0]
 
-                # else:
+                current_group=[ele for ele in current_group if getattr(ele,'get_used')==0]
+
+
                 if len(E_Group)>0:
-                    e1_group,counter,MK_line_total_time,allowable_time=mk_tokusyouhin_handler(E_Group,MK,elements,attribute_line,counter,MK_line_total_time,allowable_time)
+                    e1_group,counter,MK_line_total_time,allowable_time=mk_tokusyouhin_handler(E_Group,MK,elements,attribute_line,counter,MK_line_total_time,allowable_time,MK_break_duration_list,MK_break_start)
 
-                # premium_ace3_today =[ele for ele in for_canned_total_data if getattr(ele,'品名').startswith('ﾌﾟﾚﾐｱﾑｴ-ｽ-3') and getattr(ele,'納期_copy')==elements]
-                # premium_ace_in_general=[ele for ele in for_canned_total_data if getattr(ele,'品名').startswith('ﾌﾟﾚﾐｱﾑｴ-ｽ-3')]
 
                 if len(e1_group)==0:
-                    # mk_tokusyouhin=[el for el in arerugen_check_list if getattr(el,'MK特殊品')=='○' and getattr(el,'納期_copy')==elements]
-                    mk_tokusyouhin=[el for el in arerugen_check_list if getattr(el,'MK特殊品')=='○']
+                    mk_tokusyouhin=[el for el in arerugen_check_list if getattr(el,'MK特殊品')=='○' and getattr(el,'get_used')==0]
                     if len(mk_tokusyouhin)==0:
-                        mk_tokusyouhin=[el for el in current_group if getattr(el,'MK特殊品')=='○']
+                        mk_tokusyouhin=[el for el in current_group if getattr(el,'MK特殊品')=='○' and getattr(el,'get_used')==0]
                     if len(mk_tokusyouhin):
-                        e1_group,counter,MK_line_total_time,allowable_time=mk_tokusyouhin_handler([mk_tokusyouhin[0]],MK,elements,attribute_line,counter,MK_line_total_time,allowable_time)
-
-
-
+                        e1_group,counter,MK_line_total_time,allowable_time=mk_tokusyouhin_handler([mk_tokusyouhin[0]],MK,elements,attribute_line,counter,MK_line_total_time,allowable_time,MK_break_duration_list,MK_break_start)
 
                 MK_LIST=MK_LIST+e1_group
-                arerugen_check_list=[ele for ele in arerugen_check_list if getattr(ele,'MK特殊品')!='○']
+                arerugen_check_list=[ele for ele in arerugen_check_list if getattr(ele,'MK特殊品')!='○' and getattr(ele,'get_used')==0]
 
                 canned_list=[]
-                current_day_canned_data=[ele for ele in canned_data1 if getattr(ele,'納期_copy')==elements]
+                current_day_canned_data=[ele for ele in canned_data1 if getattr(ele,'納期_copy')==elements and getattr(ele,'get_used')==0]
 
                 if len(canned_data1)>0 and len(e1_group)>0:
-                    canned_list,counter,MK_line_total_time,allowable_time=canned_data_allocation(MK_line_total_time,MK,canned_data1,counter,allowable_time,elements,moto_canned_data)
+                    canned_list,counter,MK_line_total_time,allowable_time = canned_data_allocation(MK_line_total_time,MK,canned_data1,counter,allowable_time,elements,moto_canned_data,MK_break_duration_list,MK_break_start)
                     MK_LIST=MK_LIST+canned_list
-
-                    # print('reached: len(canned_data1)>0 and len(e1_group)')
-                    # print(elements)
-                    # sleep(10)
-                    continue
 
                 
                 elif len(e1_group)>0 and len(premium_ace_in_general)>0:
                     #sorting premium-ace in ascending order of deadline
                     premium_ace_in_general=sorted(premium_ace_in_general, key=lambda x: x.納期_copy)
 
-                    premium_ace_list,counter,MK_line_total_time,allowable_time= premium_ace_allocation(MK_line_total_time,MK,premium_ace_in_general,counter,allowable_time,elements)
+                    premium_ace_list,counter,MK_line_total_time,allowable_time= premium_ace_allocation(MK_line_total_time,MK,premium_ace_in_general,counter,allowable_time,elements,MK_break_duration_list,MK_break_start)
                     MK_LIST=MK_LIST+premium_ace_list
 
-                    # print('reached: len(e1_group)>0 and len(premium_ace_in_general)')
-                    # print(elements)
-                    # sleep(10)
-
                 elif len(current_day_canned_data):
-                    # if :
-                    canned_list,counter,MK_line_total_time,allowable_time= canned_data_allocation(MK_line_total_time,MK,canned_data1,counter,allowable_time,elements,moto_canned_data)
+
+                    canned_list,counter,MK_line_total_time,allowable_time= canned_data_allocation(MK_line_total_time,MK,canned_data1,counter,allowable_time,elements,moto_canned_data,MK_break_duration_list,MK_break_start)
                     MK_LIST=MK_LIST+canned_list
 
-                    # print('reached: len(current_day_canned_data)')
-                    # print(elements)
-                    # sleep(10)
-                    continue
 
                 elif not premium_star and len(premium_ace_in_general)>0:#len(premium_ace3_today)
                     #sorting premium-ace in ascending order of deadline
                     premium_ace_in_general=sorted(premium_ace_in_general, key=lambda x: x.納期_copy)
 
-                    premium_ace_list,counter,MK_line_total_time,allowable_time=premium_ace_allocation(MK_line_total_time,MK,premium_ace_in_general,counter,allowable_time,elements)
+                    premium_ace_list,counter,MK_line_total_time,allowable_time=premium_ace_allocation(MK_line_total_time,MK,premium_ace_in_general,counter,allowable_time,elements,MK_break_duration_list,MK_break_start)
                     MK_LIST=MK_LIST+premium_ace_list
                     allowable_time=allowable_time+timedelta(hours=3)
                     MK_line_total_time=MK_line_total_time-180
-                    # print('reached: len(premium_ace3_today)')
-                    # print(elements)
-                    # sleep(10)
+
 
 
                 highsoft_list=[]
@@ -2077,12 +2364,27 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                             high_list.append(ele)   
                             MK_line_total_time=MK_line_total_time-MK.cleaning_time-getattr(ele,'MK流量_time')
                             setattr(ele,'get_used',1)
-
+                    time_to_reach_break_mins=0
                     for ele in high_list:
 
                         before_time=allowable_time
                         after_time=before_time+timedelta(minutes=getattr(ele,'MK流量_time'))
                         allowable_time=after_time+timedelta(minutes=MK.cleaning_time)
+
+                        for index, (duration,break_start) in enumerate(zip(MK_break_duration_list,MK_break_start)):
+                            if before_time<break_start and allowable_time> break_start:
+                                time_to_reach_break= break_start-before_time
+                                time_to_reach_break_mins=time_to_reach_break.total_seconds() / 60
+
+                                before_time= break_start+timedelta(minutes=duration)
+                                                                                
+                                after_time=before_time+timedelta(minutes=getattr(ele,'MK流量_time'))
+                                allowable_time=after_time+timedelta(minutes=MK.cleaning_time)
+
+                                break
+                        
+                        if allowable_time>elements+timedelta(hours=23):
+                            break
 
                         setattr(ele,'slot',f'{before_time}-->{after_time}')
                         setattr(ele,'順番',counter)
@@ -2090,33 +2392,58 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                         setattr(ele,'start',f'{before_time}')
                         setattr(ele,'end',f'{after_time}')
                         setattr(ele,'day',f'{after_time.day_name()}')
-
-
                         counter+=1
 
                         if elements.day_name()=='Saturday':
 
                             if before_time.hour<11 and allowable_time.hour>=11:
-                                # allowable_time=allowable_time+timedelta(hours=1)
                                 allowable_time=allowable_time+timedelta(minutes=80)
                                 setattr(ele,'break',1)
 
                             if before_time.hour<17 and allowable_time.hour>=17:
-                                # allowable_time=allowable_time+timedelta(hours=1)
                                 allowable_time=allowable_time+timedelta(minutes=80)
                                 setattr(ele,'break',1)
 
-
-
-
+                    #unused time between last allocated object and current break...
+                    MK_line_total_time=MK_line_total_time-time_to_reach_break_mins
+                
                     if len(NDplusother)==0:
                         allowable_time=allowable_time+timedelta(hours=3)
                         MK_line_total_time=MK_line_total_time-180#MK_line_total_time-MK.cleaning_time-180
 
                     MK_LIST=MK_LIST+high_list
-                
+
+                if allowable_time>elements+timedelta(hours=23):
+                    break
                 current_batch_size=len(e1_group)+len(high_list)+len(canned_list)
                 arerugen_check_list=[ele for ele in arerugen_check_list if ele not in high_list]
+
+
+                
+                #this section keeps all the FHA6 instances which sums up to 4531
+                arerugen_check_list=sorting_FHA6(arerugen_check_list)
+
+                pre_instances = []
+                fha6_instances = []
+                post_instances = []
+
+                fha6_started = False  # Flag to check if 'FH-A6' instances have started
+                for instance in arerugen_check_list:
+                    if hasattr(instance, '品名') and instance.品名.startswith('FH-A6'):
+                        fha6_started = True
+                        fha6_instances.append(instance)
+                    elif not fha6_started:
+                        pre_instances.append(instance)
+                    else:
+                        post_instances.append(instance)
+
+
+                FHA6_instance=find_pairs_summing_to_4531(fha6_instances)
+
+                # FHA6_instance=find_pairs_summing_to_4531(fha6_instances)
+                arerugen_check_list=pre_instances+FHA6_instance+post_instances
+
+
 
                 mk_list_last=[]
                 randi_counter=0
@@ -2139,7 +2466,24 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
 
                 for ele in arerugen_check_list:
 
-                    if not ele.品名.startswith('ﾆﾕ-YCS') and MK_line_total_time-MK.cleaning_time-getattr(ele,'MK流量_time')>0 and current_batch_size+len(mk_list)+len(mk_list_last)<max_batch:
+                    #FH-A6 is only allocated in MK so no other line needs this allocation
+
+                    if ele.品名.startswith('FH-A6'):
+                        if FHA6_counter==0 or  FHA6_counter==2:
+                            if MK_line_total_time-MK.cleaning_time*2-79>0:
+
+                                mk_list.append(ele)   
+                                MK_line_total_time=MK_line_total_time-MK.cleaning_time-getattr(ele,'MK流量_time')
+                                setattr(ele,'get_used',1)
+                                FHA6_counter+=1
+
+                        elif MK_line_total_time-MK.cleaning_time-getattr(ele,'MK流量_time')>0:
+                            mk_list.append(ele)   
+                            MK_line_total_time=MK_line_total_time-MK.cleaning_time-getattr(ele,'MK流量_time')
+                            setattr(ele,'get_used',1)
+                            FHA6_counter+=1
+
+                    elif not ele.品名.startswith('ﾆﾕ-YCS') and MK_line_total_time-MK.cleaning_time-getattr(ele,'MK流量_time')>0 and current_batch_size+len(mk_list)+len(mk_list_last)<max_batch:
 
                     
                         mk_list.append(ele)   
@@ -2200,7 +2544,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
 
                 if len(current1)>0:
 
-                    time_required_for_both_in_current1=MK.cleaning_time+getattr(current1[0],'MK流量_time')+MK.cleaning_time+getattr(current1[1],'MK流量_time')
+                    time_required_for_both_in_current1=MK.cleaning_time*2+getattr(current1[0],'MK流量_time')+MK.cleaning_time+getattr(current1[1],'MK流量_time')
 
                     if MK_line_total_time-time_required_for_both_in_current1<0:
                         current1=[]
@@ -2214,7 +2558,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                 
                 current_group=[ele for ele in current_group if getattr(ele,'get_used')==0]
                 for ele in current_group:
-                    if MK_line_total_time-MK.cleaning_time-getattr(ele,'MK流量_time')>0 and getattr(ele,'get_used')==0 and not ele.品名.startswith('ﾊｲｿﾌﾄ') and current_batch_size+len(mk_list)<max_batch:
+                    if not ele.品名.startswith('FH-A6') and MK_line_total_time-MK.cleaning_time-getattr(ele,'MK流量_time')>0 and getattr(ele,'get_used')==0 and not ele.品名.startswith('ﾊｲｿﾌﾄ') and current_batch_size+len(mk_list)<max_batch:
                         # and not ele.品名.startswith('ﾆﾕ-YCS'):#and getattr(ele,'last')!=1:
                         
                         if getattr(ele,'ランディ')=='○':
@@ -2252,12 +2596,12 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
 
 
                 # future_groups=[ele for ele in future_groups if getattr(ele,'last')!=1]+future_groups_last
-                future_groups=[ele for ele in future_groups if getattr(ele,'MK特殊品')!='○']
+                future_groups=[ele for ele in future_groups if getattr(ele,'MK特殊品')!='○' and getattr(ele,'get_used')==0]
                 # future_groups=sorted(future_groups, key=lambda ele: ele.品名.startswith('ﾆﾕ-YCS'))
 
 
                 for ele in future_groups:
-                    if MK_line_total_time-MK.cleaning_time-getattr(ele,'MK流量_time')>0 and not ele.品名.startswith('ﾆﾕ-YCS') and not ele.品名.startswith('ﾊｲｿﾌﾄ') and current_batch_size+len(mk_list)<max_batch:# and getattr(ele,'last')!=1:
+                    if not ele.品名.startswith('FH-A6')and MK_line_total_time-MK.cleaning_time-getattr(ele,'MK流量_time')>0 and not ele.品名.startswith('ﾆﾕ-YCS') and not ele.品名.startswith('ﾊｲｿﾌﾄ') and current_batch_size+len(mk_list)<max_batch:# and getattr(ele,'last')!=1:
                         # if elements.day==27 and elements.month==3:
                         #     print('futuregroup')
                         #     print(ele.品名)
@@ -2288,6 +2632,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                                 mk_list_copy=mk_list.copy()
 
                 if len(mk_list)==0 and len(mk_list_last)==0:
+                    copy_future_groups=[ele for ele in copy_future_groups if getattr(ele,'get_used')==0]
                     copy_future_groups=last_remaining_appender_second_part(copy_future_groups,premium_star)
 
                     s720K=[ele for ele in copy_future_groups if getattr(ele,'品名')=='ﾆﾕ-YCS ｽﾄﾚﾂﾁ720K']
@@ -2316,7 +2661,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
 
                     for ele in copy_future_groups:
 
-                        if MK_line_total_time-MK.cleaning_time-getattr(ele,'MK流量_time')>0 and getattr(ele,'get_used')==0 and current_batch_size+len(mk_list)<max_batch:
+                        if not ele.品名.startswith('FH-A6') and  MK_line_total_time-MK.cleaning_time-getattr(ele,'MK流量_time')>0 and getattr(ele,'get_used')==0 and current_batch_size+len(mk_list)<max_batch:
                             if getattr(ele,'ランディ')=='○':
                                 randi_counter+=1
                                 if randi_counter>5:
@@ -2327,7 +2672,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
 
                 premimum_group='ﾌﾟﾚﾐｱﾑｽﾀ-DX'
                 mk_list=grouping(mk_list,premimum_group) #'ﾌﾟﾚﾐｱﾑｽﾀ-DX'
-                mk_list=sorting_FHA6(mk_list)
+                
 
                 #for aroma fold
                 groupname1='ｱﾛﾏ-ﾃﾞHTR'
@@ -2342,8 +2687,8 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                #+mk_list+
 
 
-                groupname_type1= ['ﾌﾟﾗｽﾞﾏAR', 'ﾌﾟﾗｽﾞﾏNFC', 'ﾌﾟﾚﾐｱﾑｽﾀｰDX', 'ﾌﾟﾗｽﾞﾏDX', 'ｱﾛﾏｽﾀ', 'ｴﾚﾊﾞｰﾙｿﾌﾄ']
-                groupname_type2=['ﾌﾟﾚﾐｱﾑｽﾀｰ', 'ﾌﾟﾗｽﾞﾏNFC', 'ﾌﾟﾚﾐｱﾑｽﾀ-DX', 'ﾌﾟﾗｽﾞﾏDX', 'ｱﾛﾏｽﾀｰ', 'ﾛｰﾚﾙｽﾀｰ']
+                groupname_type1= ['ﾌﾟﾗｽﾞﾏAR', 'ﾌﾟﾚﾐｱﾑｽﾀｰ','ﾌﾟﾗｽﾞﾏNFC', 'ﾌﾟﾚﾐｱﾑｽﾀｰDX', 'ﾌﾟﾗｽﾞﾏDX', 'ｱﾛﾏｽﾀｰ', 'ｴﾚﾊﾞｰﾙｿﾌﾄ']
+                groupname_type2= ['ﾌﾟﾗｽﾞﾏAR', 'ﾌﾟﾚﾐｱﾑｽﾀｰ','ﾌﾟﾗｽﾞﾏNFC', 'ﾌﾟﾚﾐｱﾑｽﾀ-DX', 'ﾌﾟﾗｽﾞﾏDX', 'ｱﾛﾏｽﾀｰ', 'ﾛｰﾚﾙｽﾀｰ']
 
                 groupname_type1 = [convert_fullwidth_to_halfwidth(name) for name in groupname_type1]
                 groupname_type2 = [convert_fullwidth_to_halfwidth(name) for name in groupname_type2]
@@ -2360,6 +2705,9 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                 #ordering by deadline if the product has same name:
                 mk_list=order_by_deadline(mk_list)
 
+                #FHA6 is the product where the order matters
+                mk_list=sorting_FHA6(mk_list)
+
                 MK_LIST=MK_LIST+mk_list
                 for ele in mk_list:
                     if getattr(ele,'pushed_forward')==1:
@@ -2368,6 +2716,27 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                     before_time=allowable_time
                     after_time=before_time+timedelta(minutes=getattr(ele,'MK流量_time'))
                     allowable_time=after_time+timedelta(minutes=MK.cleaning_time)
+
+                    
+                    #MK_break_duration_list
+                   
+                    for index, (duration,break_start) in enumerate(zip(MK_break_duration_list,MK_break_start)):
+                        if before_time<break_start and allowable_time> break_start:
+                            time_to_reach_break= break_start-before_time
+                            time_to_reach_break_mins=time_to_reach_break.total_seconds() / 60
+
+                            before_time= break_start+timedelta(minutes=duration)
+                                                                        
+                            after_time=before_time+timedelta(minutes=getattr(ele,'MK流量_time'))
+                            allowable_time=after_time+timedelta(minutes=MK.cleaning_time)
+
+                            break
+                    
+                    if allowable_time>elements+timedelta(hours=23):
+                        break
+
+                    
+                    # for each_brake in MK_break_start:
 
                     # this_linetotal_time=this_linetotal_time-getattr(ele,'MK流量_time')-MK.cleaning_time
                     setattr(ele,'slot',f'{before_time}-->{after_time}')
@@ -2392,7 +2761,13 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                             allowable_time=allowable_time+timedelta(minutes=80)
                             setattr(ele,'break',1)
 
-            
+                for unallocate in MK_LIST:
+                    if getattr(unallocate,'生産日') is None:
+                        setattr(unallocate,'get_used',0)
+
+                MK_LIST=[ele for ele in MK_LIST if getattr(ele,'get_used')==1]
+
+                # exit()            
             elif eachline=='FK' and elements.day_name()!='Sunday':#
                 allowable_time=elements+timedelta(minutes=440)
 
@@ -2409,6 +2784,8 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                 
 
                 high_list=[]
+                #this is time between break and previously allocated one
+                time_to_reach_break_mins=0
                 if len(highsoft_list)>0:
                     highsoft_other=highsoft_list+NDplusother
                     
@@ -2425,7 +2802,22 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                         before_time=allowable_time
                         after_time=before_time+timedelta(minutes=getattr(ele,'FK流量_time'))
                         allowable_time=after_time+timedelta(minutes=FK.cleaning_time)
+                        
 
+                        for index, (duration,break_start) in enumerate(zip(FK_break_duration_list,FK_break_start)):
+                            if before_time<break_start and allowable_time> break_start:
+                                time_to_reach_break= break_start-before_time
+                                time_to_reach_break_mins = time_to_reach_break.total_seconds() / 60
+
+                                before_time= break_start+timedelta(minutes=duration)
+                                                                                
+                                after_time=before_time+timedelta(minutes=getattr(ele,'MK流量_time'))
+                                allowable_time=after_time+timedelta(minutes=FK.cleaning_time)
+
+                                break
+                        
+                        if allowable_time>elements+timedelta(hours=23):
+                            break
                         setattr(ele,'slot',f'{before_time}-->{after_time}')
                         setattr(ele,'順番',counter)
                         setattr(ele,'生産日',elements.date())
@@ -2459,14 +2851,9 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
 
                     FK_LIST=FK_LIST+high_list
 
-
-                    # print(" i am here ")
-                    # print(f"the high soft list length {len(highsoft_list)}")
-                    # print(f"the high soft other length {len(highsoft_other)}")
-                    # print(f"the ND plus other length {len(NDplusother)}")
-
-                    # exit()
-
+       
+                #lets prioritize the 最終限定
+                FK_line_total_time= FK_line_total_time - time_to_reach_break_mins
 
                 #lets prioritize the 最終限定
                 current_batch_size=len(high_list)
@@ -2554,7 +2941,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
 
                 if len(current1)>0:
 
-                    time_required_for_both_in_current1=FK.cleaning_time+getattr(current1[0],'FK流量_time')+FK.cleaning_time+getattr(current1[1],'FK流量_time')
+                    time_required_for_both_in_current1=FK.cleaning_time*2+getattr(current1[0],'FK流量_time')+FK.cleaning_time+getattr(current1[1],'FK流量_time')
 
                     if FK_line_total_time-time_required_for_both_in_current1<0:
                         current1=[]
@@ -2687,8 +3074,8 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                 fk_list=grouping_two_groups_consecutively(fk_list,groupname1,groupname2)
 
 
-                groupname_type1= ['ﾌﾟﾗｽﾞﾏAR', 'ﾌﾟﾗｽﾞﾏNFC', 'ﾌﾟﾚﾐｱﾑｽﾀｰDX', 'ﾌﾟﾗｽﾞﾏDX', 'ｱﾛﾏｽﾀ', 'ｴﾚﾊﾞｰﾙｿﾌﾄ']
-                groupname_type2=['ﾌﾟﾚﾐｱﾑｽﾀｰ', 'ﾌﾟﾗｽﾞﾏNFC', 'ﾌﾟﾚﾐｱﾑｽﾀ-DX', 'ﾌﾟﾗｽﾞﾏDX', 'ｱﾛﾏｽﾀｰ', 'ﾛｰﾚﾙｽﾀｰ']
+                groupname_type1= ['ﾌﾟﾗｽﾞﾏAR', 'ﾌﾟﾚﾐｱﾑｽﾀｰ', 'ﾌﾟﾗｽﾞﾏNFC', 'ﾌﾟﾚﾐｱﾑｽﾀｰDX', 'ﾌﾟﾗｽﾞﾏDX', 'ｱﾛﾏｽﾀｰ', 'ｴﾚﾊﾞｰﾙｿﾌﾄ']
+                groupname_type2= ['ﾌﾟﾗｽﾞﾏAR', 'ﾌﾟﾚﾐｱﾑｽﾀｰ', 'ﾌﾟﾗｽﾞﾏNFC', 'ﾌﾟﾚﾐｱﾑｽﾀ-DX', 'ﾌﾟﾗｽﾞﾏDX', 'ｱﾛﾏｽﾀｰ', 'ﾛｰﾚﾙｽﾀｰ']
 
                 # groupname_type1 = ['プラズマAR','プラズマNFC','プレミアムスターDX','プラズマDX','アロマスタ','エレバールソフト']
                 groupname_type1 = [convert_fullwidth_to_halfwidth(name) for name in groupname_type1]
@@ -2717,6 +3104,20 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                     after_time=before_time+timedelta(minutes=getattr(ele,'FK流量_time'))
                     allowable_time=after_time+timedelta(minutes=FK.cleaning_time)
                     # this_linetotal_time=this_linetotal_time-getattr(ele,'FK流量_time')-FK.cleaning_time
+                    for index, (duration,break_start) in enumerate(zip(FK_break_duration_list,FK_break_start)):
+                        if before_time<break_start and allowable_time> break_start:
+                            time_to_reach_break= break_start-before_time
+                            time_to_reach_break_mins = time_to_reach_break.total_seconds() / 60
+
+                            before_time= break_start+timedelta(minutes=duration)
+                                                                            
+                            after_time=before_time+timedelta(minutes=getattr(ele,'FK流量_time'))
+                            allowable_time=after_time+timedelta(minutes=FK.cleaning_time)
+
+                            break
+                    
+                    if allowable_time>elements+timedelta(hours=23):
+                        break
                     setattr(ele,'slot',f'{before_time}-->{after_time}')
                     setattr(ele,'順番',counter)
                     setattr(ele,'生産日',elements.date())
@@ -2737,7 +3138,11 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                             allowable_time=allowable_time+timedelta(minutes=80)
 
                             setattr(ele,'break',1)
+                for ele in FK_LIST:
+                    if getattr(ele,'生産日')==None:
+                        setattr(ele,'get_used',0)
 
+                FK_LIST=[ele for ele in FK_LIST if getattr(ele,'get_used')==1]
             
             elif eachline=='KO' and not Magarin and elements.day_name()!='Saturday':
 
@@ -2748,12 +3153,20 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                 # orimpia AR sheet has to be manufactured at the beginning of the week
                 if first_time==0 or elements.day_name()=='Sunday':
                     first_time=1
-                    arerugen_check_list = sorted(arerugen_check_list, key=lambda instance: not instance.品名.startswith("ｵﾘﾝﾋﾟｱARｼｰﾄ"))
+                    # arerugen_check_list = sorted(arerugen_check_list, key=lambda instance: not instance.品名.startswith("ｵﾘﾝﾋﾟｱARｼｰﾄ"))
+
+
+                #this time is to prevent unnecessary brakes
+                #suppose if the starting time is from midday then no need to add break for the afternoon
+                intital_ko_start_time=KO.start_time
+
 
                 arerugen_check_list=reorder_same_name(arerugen_check_list)
 
-                nouki_and_seisanbi_same=[ele for ele in arerugen_check_list if getattr(ele,'納期_copy').date()<=(elements+timedelta(days=1)).date()]
-
+                if elements.day_name()=='Sunday':
+                    nouki_and_seisanbi_same=[ele for ele in arerugen_check_list if getattr(ele,'納期_copy').date()<=(elements+timedelta(days=1)).date()]
+                else:
+                    nouki_and_seisanbi_same=[ele for ele in arerugen_check_list if getattr(ele,'納期_copy').date()==elements.date()]
                 #prioritizing those which has nouki as current date insted those which has future nouki
                 if len(nouki_and_seisanbi_same)>0:
                     index=arerugen_check_list.index(nouki_and_seisanbi_same[-1])
@@ -2775,13 +3188,30 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                 
                 
                 # MB_orimpia=[ele for ele in arerugen_check_list if ele.品名.startswith('MB-ｵﾘﾝﾋﾟｱ')]  荷姿
-                MB_orimpia=[ele for ele in arerugen_check_list if ele.荷姿.startswith('コンテナ')]
+                MB_orimpia= [ele for ele in arerugen_check_list if ele.荷姿.startswith('コンテナ')]
+                arerugen_check_list= [ele for ele in arerugen_check_list if ele not in MB_orimpia]
+                    
+                #lets now consider about KO user defined brakes
+                # Assuming KO_brakes is a list of breaks for the day
+                user_defined_breaks = []
+                for each_date in dates:
 
-                arerugen_check_list=[ele for ele in arerugen_check_list if ele not in MB_orimpia]
+                    if each_date.date.day_name()!='Saturday':
+
+                        KO_brakes = each_date.every_line_break_pattern['KO_break_pattern']
+
+                        for index, values in enumerate(KO_brakes):
+                            break_start_datetime = KO_brakes[f'break{index}']['break']  # e.g., '12:00'
+                            break_duration_minutes = KO_brakes[f'break{index}']['break_duration']  # e.g., 30
+
+                            # Calculate break end datetime by adding the break duration
+                            break_end_datetime = break_start_datetime + timedelta(minutes=break_duration_minutes)
+
+                            # Append the break period to the list
+                            user_defined_breaks.append((break_start_datetime, break_end_datetime))
 
                  
                 for ele in arerugen_check_list:
-                    
                     MB_orimpia=[orimpia for orimpia in MB_orimpia if getattr(orimpia,'get_used')==0]
 
                     for dle in MB_orimpia:
@@ -2795,7 +3225,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
 
                         m1=KO.start_time.hour*60+KO.start_time.minute
                         m2=restricted_time.hour*60+restricted_time.minute
-                        T1=(m1>=440 and m1<=1360) and (m2>=440 and m2<=1360)
+                        T1=(m1>=440 and m1<=1320) and (m2>=440 and m2<=1320)
 
                         # T1=((KO.start_time.hour<23 and KO.start_time.hour>=8) and (restricted_time.hour<23 and restricted_time.hour>=8))
 
@@ -2814,11 +3244,13 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
 
                             before_before_time=KO.start_time
                             KO.start_time=added_time(KO_LIST,prefixes_with_two_hrs,dle,KO)
-
+                            # Calculate the total product duration (production time + cleaning time)
+                            product_duration = timedelta(minutes=getattr(dle, 'KO流量_time') + KO.cleaning_time)
+                            # Adjust KO.start_time to avoid user-defined breaks
+                            KO.start_time = adjust_for_user_defined_breaks(KO.start_time, product_duration, user_defined_breaks,dates, funname='a')
 
                             KO_LIST.append(dle)
                             ko_list.append(dle)
-                            
 
                             before_time=KO.start_time
                             KO.start_time=KO.start_time+timedelta(minutes=getattr(dle,'KO流量_time'))
@@ -2831,9 +3263,10 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
 
                             if attri not in KO.day_breaktime_flag:
                                 KO.day_breaktime_flag[attri]=0
+
                             if KO.start_time>=KO.start_time.replace(hour=2,minute=0) and KO.start_time<KO.start_time.replace(hour=5,minute=0) and KO.day_breaktime_flag[attri]==0:
-                                # print("reached_true")
                                 KO.start_time+=timedelta(hours=2)
+                                after_after_time=KO.start_time
                                 KO.day_breaktime_flag[attri]=1
                                 setattr(dle,'break',2)
 
@@ -2849,20 +3282,50 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                                 KO.day_breaktime_flag[attri]=1
                                 setattr(dle,'break',1)
 
-                            if before_before_time.hour<11 and after_after_time.hour>=11:
+                            if before_before_time.hour<11 and after_after_time.hour>=11 and KO.morning_break_flag[attri]==0:
                                 KO.start_time=KO.start_time+timedelta(minutes=80)
-                                setattr(dle,'break',2)
+                                KO.morning_break_flag[attri]=1
+                            
+                            elif before_before_time.hour>11 and KO.morning_break_flag[attri]==0:
+                                # KO.start_time=KO.start_time+timedelta(minutes=80)
+                                # KO.morning_break_flag[attri]=1
 
-                            if before_before_time.hour<17 and after_after_time.hour>=17:
+                                if KO.start_time.date()==intital_ko_start_time.date() and intital_ko_start_time.hour>11:
+                                    KO.start_time=KO.start_time+timedelta(minutes=0)
+                                    KO.morning_break_flag[attri]=1
+
+                                else:
+                                    KO.start_time=KO.start_time+timedelta(minutes=80)
+                                    KO.morning_break_flag[attri]=1
+
+
+
+                            if before_before_time.hour<17 and after_after_time.hour>=17 and KO.evening_break_flag[attri]==0:
                                 KO.start_time=KO.start_time+timedelta(minutes=80)
+                                KO.evening_break_flag[attri]=1
                                 setattr(dle,'break',2)
+                                
+
+                            elif before_before_time.hour>17 and KO.evening_break_flag[attri]==0:
+                                # KO.start_time=KO.start_time+timedelta(minutes=80)
+                                # KO.evening_break_flag[attri]=1
+                                
+
+                                if KO.start_time.date()==intital_ko_start_time.date() and intital_ko_start_time.hour>17:
+                                    KO.start_time=KO.start_time+timedelta(minutes=0)
+                                    KO.evening_break_flag[attri]=1
+
+                                else:
+                                    KO.start_time=KO.start_time+timedelta(minutes=80)
+                                    KO.evening_break_flag[attri]=1
+                                    setattr(dle,'break',2)
                                 
 
                             setattr(dle,'get_used',1)
                             setattr(dle,'slot',f'{before_time}-->{after_time}')
                             setattr(dle,'順番',counter_type_KO)
                             counter_type_KO+=1
-                            setattr(dle,'生産日',after_time.date())
+                            setattr(dle,'生産日',before_time.date())
                             setattr(dle,'start',f'{before_time}')
                             setattr(dle,'end',f'{after_time}')
                             setattr(dle,'day',f'{after_time.day_name()}')
@@ -2886,10 +3349,12 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                     if  getattr(ele,'納期_copy').date()>=KO.start_time.date() and KO.start_time+timedelta(minutes=KO.cleaning_time)+timedelta(minutes=getattr(ele,'KO流量_time'))<=KO.end_time and  KO.start_time.date() not in dat2 and TT:#and len(ko_list)<=max_kolist
 
                         before_before_time=KO.start_time
-                        KO.start_time=added_time(KO_LIST,prefixes_with_two_hrs,ele,KO)
+                        KO.start_time = added_time(KO_LIST,prefixes_with_two_hrs,ele,KO)
 
-
-
+                        product_duration = timedelta(minutes=getattr(ele, 'KO流量_time') + KO.cleaning_time)
+                        # Adjust KO.start_time to avoid user-defined breaks
+                        KO.start_time = adjust_for_user_defined_breaks(KO.start_time, product_duration, user_defined_breaks,dates, funname='b')
+                        
                         KO_LIST.append(ele)
                         ko_list.append(ele)
                         before_time=KO.start_time
@@ -2905,6 +3370,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                         if KO.start_time>=KO.start_time.replace(hour=2,minute=0) and KO.start_time<KO.start_time.replace(hour=5,minute=0) and KO.day_breaktime_flag[attri]==0:
                             # print("reached_true")
                             KO.start_time+=timedelta(hours=2)
+                            after_after_time=KO.start_time
                             KO.day_breaktime_flag[attri]=1
                             setattr(ele,'break',2)
 
@@ -2921,20 +3387,50 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                             setattr(ele,'break',1)
 
 
-                        if before_before_time.hour<11 and after_after_time.hour>=11:
+                        if before_before_time.hour<11 and after_after_time.hour>=11 and KO.morning_break_flag[attri]==0:
                             KO.start_time=KO.start_time+timedelta(minutes=80)
+                            KO.morning_break_flag[attri]=1
+
+
+                        elif KO.start_time.hour>11 and KO.morning_break_flag[attri]==0:
+
+                            # print( KO.start_time)
+                            # KO.start_time=KO.start_time+timedelta(minutes=80)
+                            # KO.morning_break_flag[attri]=1
+                            if KO.start_time.date()==intital_ko_start_time.date() and intital_ko_start_time.hour>11:
+                                KO.start_time=KO.start_time+timedelta(minutes=0)
+                                KO.morning_break_flag[attri]=1
+
+                            else:
+                                KO.start_time=KO.start_time+timedelta(minutes=80)
+                                KO.morning_break_flag[attri]=1
+
+
+                        if before_before_time.hour<17 and after_after_time.hour>=17 and KO.evening_break_flag[attri]==0:
+                            KO.start_time=KO.start_time+timedelta(minutes=80)
+                            KO.evening_break_flag[attri]=1
                             setattr(ele,'break',2)
 
-                        if before_before_time.hour<17 and after_after_time.hour>=17:
-                            KO.start_time=KO.start_time+timedelta(minutes=80)
-                            setattr(ele,'break',2)
+                        elif KO.start_time.hour>17 and KO.evening_break_flag[attri]==0:
+                            # KO.start_time=KO.start_time+timedelta(minutes=80)
+                            # KO.evening_break_flag[attri]=1
+                            # setattr(ele,'break',2)
+
+                            if KO.start_time.date()==intital_ko_start_time.date() and intital_ko_start_time.hour>17:
+                                KO.start_time=KO.start_time+timedelta(minutes=0)
+                                KO.evening_break_flag[attri]=1
+
+                            else:
+                                KO.start_time=KO.start_time+timedelta(minutes=80)
+                                KO.evening_break_flag[attri]=1
+                                setattr(ele,'break',2)
 
 
                         setattr(ele,'get_used',1)
                         setattr(ele,'slot',f'{before_time}-->{after_time}')
                         setattr(ele,'順番',counter_type_KO)
                         counter_type_KO+=1
-                        setattr(ele,'生産日',after_time.date())
+                        setattr(ele,'生産日',before_time.date())
                         setattr(ele,'start',f'{before_time}')
                         setattr(ele,'end',f'{after_time}')
                         setattr(ele,'day',f'{after_time.day_name()}')
@@ -2943,24 +3439,12 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                 #or len(ko_list)<len(arerugen_check_list_copy
 
                 if (KO.start_time<KO.start_time.replace(hour=23,minute=0) or len(ko_list)<len(arerugen_check_list_copy)) and  KO.start_time.date() not in dat2  :
-                    print('reached here')
-                    print(f'the length of arerugen_check_list_copy {len(arerugen_check_list_copy)}')
+                    
                     unused_arerugen_list=[ele for ele in arerugen_check_list_copy if getattr(ele,'get_used')==0]
-
                     unused_arerugen_list=reorder_same_name(unused_arerugen_list)
-
-                    print(f'the length of unused_arerugen_list {len(unused_arerugen_list)}')
                     new_arerugen_check_list=salt_order_checker(ko_list+unused_arerugen_list+future_groups)
-
-                    print(f"the length of futute groups {len(future_groups)}")
-
-                    print(f'the length of salt_order_checker {len(new_arerugen_check_list)}')
-
-                    new_arerugen_check_list=arerugen_checker(new_arerugen_check_list)
-                    print(f'first the length of new_arerugen_check_list {len(new_arerugen_check_list)}')
+                    new_arerugen_check_list=arerugen_checker(new_arerugen_check_list)                  
                     new_arerugen_check_list=[ele for ele in new_arerugen_check_list if ele not in ko_list]
-
-                    print(f'second the length of new_arerugen_check_list {len(new_arerugen_check_list)}')
 
                     # MB_orimpia=[ele for ele in new_arerugen_check_list if ele.品名.startswith('MB-ｵﾘﾝﾋﾟｱ')]
                     MB_orimpia=[ele for ele in new_arerugen_check_list if ele.荷姿.startswith('コンテナ')]
@@ -2998,7 +3482,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                             m1=KO.start_time.hour*60+KO.start_time.minute
                             m2=restricted_time.hour*60+restricted_time.minute
                             T1=False
-                            T1=(m1>=440 and m1<=1360) and (m2>=440 and m2<=1360)
+                            T1=(m1>=440 and m1<=1320) and (m2>=440 and m2<=1320)
 
                             if len(KO_LIST)>0:
                                 T3=(getattr(KO_LIST[-1],'塩')=='普通') or (getattr(KO_LIST[-1],'塩')=='高')
@@ -3011,6 +3495,10 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                                 #this region adds extra 1 hour of cleaning time for certain kind of products as defined
                                 before_before_time=KO.start_time
                                 KO.start_time=added_time(KO_LIST,prefixes_with_two_hrs,dle,KO)
+
+                                product_duration = timedelta(minutes=getattr(dle, 'KO流量_time') + KO.cleaning_time)
+                                # Adjust KO.start_time to avoid user-defined breaks
+                                KO.start_time = adjust_for_user_defined_breaks(KO.start_time, product_duration, user_defined_breaks,dates, funname='a')
 
                                 KO_LIST.append(dle)
                                 ko_list.append(dle)
@@ -3027,6 +3515,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                                     # print("reached_true")
                                     KO.start_time+=timedelta(hours=2)
                                     KO.day_breaktime_flag[attri]=1
+                                    after_after_time=KO.start_time
                                     setattr(dle,'break',2)
 
                                 elif before_before_time<KO.start_time.replace(hour=2,minute=0) and after_time+timedelta(minutes=KO.cleaning_time)>KO.start_time.replace(hour=5,minute=0) and KO.day_breaktime_flag[attri]==0:
@@ -3042,19 +3531,53 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                                     setattr(dle,'break',1)
 
 
-                                if before_before_time.hour<11 and after_after_time.hour>=11:
+                                if before_before_time.hour<11 and after_after_time.hour>=11 and KO.morning_break_flag[attri]==0:
                                     KO.start_time=KO.start_time+timedelta(minutes=80)
-                                    setattr(dle,'break',2)
+                                    KO.morning_break_flag[attri]=1
+                                    setattr(ele,'break',2)
 
-                                if before_before_time.hour<17 and after_after_time.hour>=17:
+
+                                elif KO.start_time.hour>11 and KO.morning_break_flag[attri]==0:
+
+                                    # print( KO.start_time)
+                                    # KO.start_time=KO.start_time+timedelta(minutes=80)
+                                    # KO.morning_break_flag[attri]=1
+                                    
+
+                                    if KO.start_time.date()==intital_ko_start_time.date() and intital_ko_start_time.hour>11:
+                                        KO.start_time=KO.start_time+timedelta(minutes=0)
+                                        KO.morning_break_flag[attri]=1
+
+                                    else:
+                                        KO.start_time=KO.start_time+timedelta(minutes=80)
+                                        KO.morning_break_flag[attri]=1
+                                        setattr(ele,'break',2)
+
+
+                                if before_before_time.hour<17 and after_after_time.hour>=17 and KO.evening_break_flag[attri]==0:
                                     KO.start_time=KO.start_time+timedelta(minutes=80)
-                                    setattr(dle,'break',2)
+                                    KO.evening_break_flag[attri]=1
+                                    setattr(ele,'break',2)
+
+                                elif KO.start_time.hour>17 and KO.evening_break_flag[attri]==0:
+                                    # KO.start_time=KO.start_time+timedelta(minutes=80)
+                                    # KO.evening_break_flag[attri]=1
+                                    
+
+                                    if KO.start_time.date()==intital_ko_start_time.date() and intital_ko_start_time.hour>17:
+                                        KO.start_time=KO.start_time+timedelta(minutes=0)
+                                        KO.evening_break_flag[attri]=1
+
+                                    else:
+                                        KO.start_time=KO.start_time+timedelta(minutes=80)
+                                        KO.evening_break_flag[attri]=1
+                                        setattr(ele,'break',2)
 
                                 setattr(dle,'get_used',1)
                                 setattr(dle,'slot',f'{before_time}-->{after_time}')
                                 setattr(dle,'順番',counter_type_KO)
                                 counter_type_KO+=1
-                                setattr(dle,'生産日',after_time.date())
+                                setattr(dle,'生産日',before_time.date())
                                 setattr(dle,'start',f'{before_time}')
                                 setattr(dle,'end',f'{after_time}')
                                 setattr(dle,'day',f'{after_time.day_name()}')
@@ -3089,6 +3612,10 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                             before_before_time=KO.start_time
                             KO.start_time=added_time(KO_LIST,prefixes_with_two_hrs,ele,KO)
 
+                            product_duration = timedelta(minutes=getattr(ele, 'KO流量_time') + KO.cleaning_time)
+                            # Adjust KO.start_time to avoid user-defined breaks
+                            KO.start_time = adjust_for_user_defined_breaks(KO.start_time, product_duration, user_defined_breaks,dates, funname='b')
+
                             KO_LIST.append(ele)
                             ko_list.append(ele)
                             before_time=KO.start_time
@@ -3105,6 +3632,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                                 # print("reached_true")
                                 KO.start_time+=timedelta(hours=2)
                                 KO.day_breaktime_flag[attri]=1
+                                after_after_time=KO.start_time
                                 setattr(ele,'break',2)
 
                             elif before_before_time<KO.start_time.replace(hour=2,minute=0) and after_time+timedelta(minutes=KO.cleaning_time)>KO.start_time.replace(hour=5,minute=0) and KO.day_breaktime_flag[attri]==0:
@@ -3120,20 +3648,54 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                                 setattr(ele,'break',1)
 
 
-                            if before_before_time.hour<11 and after_after_time.hour>=11:
+                            if before_before_time.hour<11 and after_after_time.hour>=11 and KO.morning_break_flag[attri]==0:
                                 KO.start_time=KO.start_time+timedelta(minutes=80)
+                                KO.morning_break_flag[attri]=1
                                 setattr(ele,'break',2)
 
-                            if before_before_time.hour<17 and after_after_time.hour>=17:
+
+                            elif KO.start_time.hour>11 and KO.morning_break_flag[attri]==0:
+
+                                # print( KO.start_time)
+                                # KO.start_time=KO.start_time+timedelta(minutes=80)
+                                # KO.morning_break_flag[attri]=1
+                                
+
+                                if KO.start_time.date()==intital_ko_start_time.date() and intital_ko_start_time.hour>11:
+                                    KO.start_time=KO.start_time+timedelta(minutes=0)
+                                    KO.morning_break_flag[attri]=1
+
+                                else:
+                                    KO.start_time=KO.start_time+timedelta(minutes=80)
+                                    KO.morning_break_flag[attri]=1
+                                    setattr(ele,'break',2)
+
+
+                            if before_before_time.hour<17 and after_after_time.hour>=17 and KO.evening_break_flag[attri]==0:
                                 KO.start_time=KO.start_time+timedelta(minutes=80)
+                                KO.evening_break_flag[attri]=1
                                 setattr(ele,'break',2)
+
+                            elif KO.start_time.hour>17 and KO.evening_break_flag[attri]==0:
+                                # KO.start_time=KO.start_time+timedelta(minutes=80)
+                                # KO.evening_break_flag[attri]=1
+                                # 
+
+                                if KO.start_time.date()==intital_ko_start_time.date() and intital_ko_start_time.hour>17:
+                                    KO.start_time=KO.start_time+timedelta(minutes=0)
+                                    KO.evening_break_flag[attri]=1
+
+                                else:
+                                    KO.start_time=KO.start_time+timedelta(minutes=80)
+                                    KO.evening_break_flag[attri]=1
+                                    setattr(ele,'break',2)
                                 
 
                             setattr(ele,'get_used',1)
                             setattr(ele,'slot',f'{before_time}-->{after_time}')
                             setattr(ele,'順番',counter_type_KO)
                             counter_type_KO+=1
-                            setattr(ele,'生産日',after_time.date())
+                            setattr(ele,'生産日',before_time.date())
                             setattr(ele,'start',f'{before_time}')
                             setattr(ele,'end',f'{after_time}')
                             setattr(ele,'day',f'{after_time.day_name()}')
@@ -3149,7 +3711,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                     future_from_current_Day=[ele for ele in Class_Data if ele.get_used==0 and ele.納期_copy<=now_time+timedelta(days=14)  
                                                  and int(getattr(ele,'予定数量(㎏)'))<=4800  
                                                  and int(getattr(ele,'KO流量_time'))!=0 
-                                                 and getattr(ele,'窒素ガス')!='○' and getattr(ele,'KOスライス製品')=='○']
+                                                 and getattr(ele,'KOスライス製品')=='○']#and getattr(ele,'窒素ガス')!='○' 
                     
                     if datetime.datetime.strptime(ko_list[-1].end, "%Y-%m-%d %H:%M:%S").hour<=12 or len(future_from_current_Day)>0:
 
@@ -3180,7 +3742,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                         future_from_current_Day=[ele for ele in Class_Data if ele.get_used==0 and ele.納期_copy<=now_time+timedelta(days=14)  
                                                  and int(getattr(ele,'予定数量(㎏)'))<=4800  
                                                  and int(getattr(ele,'KO流量_time'))!=0 
-                                                 and getattr(ele,'窒素ガス')!='○' and getattr(ele,'KOスライス製品')=='○']
+                                                 and getattr(ele,'KOスライス製品')=='○']#and getattr(ele,'窒素ガス')!='○' 
                         
                         print(f'the length of future_from_current_Day {len(future_from_current_Day)}')
 
@@ -3251,7 +3813,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
 
                                     m1=KO.start_time.hour*60+KO.start_time.minute
                                     m2=restricted_time.hour*60+restricted_time.minute
-                                    T1=(m1>=440 and m1<=1360) and (m2>=440 and m2<=1360)
+                                    T1=(m1>=440 and m1<=1320) and (m2>=440 and m2<=1320)
                                     # T1=((KO.start_time.hour<23 and KO.start_time.hour>7) and (restricted_time.hour<23 and restricted_time.hour>7))
                                     if len(KO_LIST)>0:
                                         T3=(getattr(KO_LIST[-1],'塩')=='普通') or (getattr(KO_LIST[-1],'塩')=='高')
@@ -3263,7 +3825,11 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                                     if  T1 and T2 and T3 :#and len(ko_list)<=max_kolist
                                         #this region adds extra 1 hour of cleaning time for certain kind of products as defined
                                         before_before_time=KO.start_time
-                                        KO.start_time=added_time(KO_LIST,prefixes_with_two_hrs,ele,KO)
+                                        KO.start_time=added_time(KO_LIST,prefixes_with_two_hrs,dle,KO)
+
+                                        product_duration = timedelta(minutes=getattr(dle, 'KO流量_time') + KO.cleaning_time)
+                                        # Adjust KO.start_time to avoid user-defined breaks
+                                        KO.start_time = adjust_for_user_defined_breaks(KO.start_time, product_duration, user_defined_breaks,dates, funname='b')
 
                                         KO_LIST.append(dle)
                                         ko_list.append(dle)
@@ -3280,6 +3846,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                                             # print("reached_true")
                                             KO.start_time+=timedelta(hours=2)
                                             KO.day_breaktime_flag[attri]=1
+                                            after_after_time=KO.start_time
                                             setattr(dle,'break',2)
 
                                         elif before_before_time<KO.start_time.replace(hour=2,minute=0) and after_time+timedelta(minutes=KO.cleaning_time)>KO.start_time.replace(hour=5,minute=0) and KO.day_breaktime_flag[attri]==0:
@@ -3295,13 +3862,49 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                                             setattr(dle,'break',1)
 
 
-                                        if before_before_time.hour<11 and after_after_time.hour>=11:
+                                        if before_before_time.hour<11 and after_after_time.hour>=11 and KO.morning_break_flag[attri]==0:
                                             KO.start_time=KO.start_time+timedelta(minutes=80)
-                                            setattr(dle,'break',2)
+                                            KO.morning_break_flag[attri]=1
+                                            setattr(ele,'break',2)
 
-                                        if before_before_time.hour<17 and after_after_time.hour>=17:
+
+                                        elif KO.start_time.hour>11 and KO.morning_break_flag[attri]==0:
+
+                                            # print( KO.start_time)
+                                            # KO.start_time=KO.start_time+timedelta(minutes=80)
+                                            # KO.morning_break_flag[attri]=1
+                                            
+
+                                            if KO.start_time.date()==intital_ko_start_time.date() and intital_ko_start_time.hour>11:
+                                                KO.start_time=KO.start_time+timedelta(minutes=0)
+                                                KO.morning_break_flag[attri]=1
+
+                                            else:
+                                                KO.start_time=KO.start_time+timedelta(minutes=80)
+                                                KO.morning_break_flag[attri]=1
+                                                # setattr(ele,'break',2)
+
+
+                                        if before_before_time.hour<17 and after_after_time.hour>=17 and KO.evening_break_flag[attri]==0:
                                             KO.start_time=KO.start_time+timedelta(minutes=80)
-                                            setattr(dle,'break',2)
+                                            KO.evening_break_flag[attri]=1
+                                            setattr(ele,'break',2)
+
+                                        elif KO.start_time.hour>17 and KO.evening_break_flag[attri]==0:
+                                            # KO.start_time=KO.start_time+timedelta(minutes=80)
+                                            # KO.evening_break_flag[attri]=1
+                                            
+
+                                            if KO.start_time.date()==intital_ko_start_time.date() and intital_ko_start_time.hour>17:
+                                                KO.start_time=KO.start_time+timedelta(minutes=0)
+                                                KO.evening_break_flag[attri]=1
+
+                                            else:
+                                                KO.start_time=KO.start_time+timedelta(minutes=80)
+                                                KO.evening_break_flag[attri]=1
+                                                setattr(ele,'break',2)
+
+                                            
                                         
                                         
                                         day_name=after_time.strftime('%A')
@@ -3309,7 +3912,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                                         setattr(dle,'slot',f'{before_time}-->{after_time}')
                                         setattr(dle,'順番',counter_type_KO)
                                         counter_type_KO+=1
-                                        setattr(dle,'生産日',after_time.date())
+                                        setattr(dle,'生産日',before_time.date())
                                         setattr(dle,'start',f'{before_time}')
                                         setattr(dle,'end',f'{after_time}')
                                         setattr(dle,'day',f'{day_name}')
@@ -3351,6 +3954,10 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                                     #this region adds extra 1 hour of cleaning time for certain kind of products as defined
                                     before_before_time=KO.start_time
                                     KO.start_time=added_time(KO_LIST,prefixes_with_two_hrs,ele,KO)
+
+                                    product_duration = timedelta(minutes=getattr(ele, 'KO流量_time') + KO.cleaning_time)
+                                    # Adjust KO.start_time to avoid user-defined breaks
+                                    KO.start_time = adjust_for_user_defined_breaks(KO.start_time, product_duration, user_defined_breaks,dates, funname='b')
                                     # print("i reached in allocation")
                                     KO_LIST.append(ele)
                                     ko_list.append(ele)
@@ -3368,6 +3975,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                                         # print("reached_true")
                                         KO.start_time+=timedelta(hours=2)
                                         KO.day_breaktime_flag[attri]=1
+                                        after_after_time=KO.start_time
                                         setattr(ele,'break',2)
 
                                     elif before_before_time<KO.start_time.replace(hour=2,minute=0) and after_time+timedelta(minutes=KO.cleaning_time)>KO.start_time.replace(hour=5,minute=0) and KO.day_breaktime_flag[attri]==0:
@@ -3383,13 +3991,47 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                                         setattr(ele,'break',1)
 
 
-                                    if before_before_time.hour<11 and after_after_time.hour>=11:
+                                    if before_before_time.hour<11 and after_after_time.hour>=11 and KO.morning_break_flag[attri]==0:
                                         KO.start_time=KO.start_time+timedelta(minutes=80)
+                                        KO.morning_break_flag[attri]=1
                                         setattr(ele,'break',2)
 
-                                    if before_before_time.hour<17 and after_after_time.hour>=17:
+
+                                    elif KO.start_time.hour>11 and KO.morning_break_flag[attri]==0:
+
+                                        # print( KO.start_time)
+                                        # KO.start_time=KO.start_time+timedelta(minutes=80)
+                                        # KO.morning_break_flag[attri]=1
+                                        
+
+                                        if KO.start_time.date()==intital_ko_start_time.date() and intital_ko_start_time.hour>11:
+                                            KO.start_time=KO.start_time+timedelta(minutes=0)
+                                            KO.morning_break_flag[attri]=1
+
+                                        else:
+                                            KO.start_time=KO.start_time+timedelta(minutes=80)
+                                            KO.morning_break_flag[attri]=1
+                                            setattr(ele,'break',2)
+
+
+                                    if before_before_time.hour<17 and after_after_time.hour>=17 and KO.evening_break_flag[attri]==0:
                                         KO.start_time=KO.start_time+timedelta(minutes=80)
+                                        KO.evening_break_flag[attri]=1
                                         setattr(ele,'break',2)
+
+                                    elif KO.start_time.hour>17 and KO.evening_break_flag[attri]==0:
+                                        # KO.start_time=KO.start_time+timedelta(minutes=80)
+                                        # KO.evening_break_flag[attri]=1
+                                       
+
+                                        if KO.start_time.date()==intital_ko_start_time.date() and intital_ko_start_time.hour>17:
+                                            KO.start_time=KO.start_time+timedelta(minutes=0)
+                                            KO.evening_break_flag[attri]=1
+
+                                        else:
+                                            KO.start_time=KO.start_time+timedelta(minutes=80)
+                                            KO.evening_break_flag[attri]=1
+                                            setattr(ele,'break',2)
                                         
                                     # print(after_time)
                                     day_name=after_time.strftime('%A')
@@ -3397,7 +4039,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                                     setattr(ele,'slot',f'{before_time}-->{after_time}')
                                     setattr(ele,'順番',counter_type_KO)
                                     counter_type_KO+=1
-                                    setattr(ele,'生産日',after_time.date())
+                                    setattr(ele,'生産日',before_time.date())
                                     setattr(ele,'start',f'{before_time}')
                                     setattr(ele,'end',f'{after_time}')
                                     setattr(ele,'day',f'{day_name}')
@@ -3405,26 +4047,39 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                                     setattr(ele,'kostarttime',KO.start_time)
 
                                 no=no+1
-                        # print(f"ko list len  after {len(ko_list),len(KO_LIST)}")
-
-
-                # if len(ko_list)>0:
-                    
-                #     if datetime.datetime.strptime(ko_list[-1].end, "%Y-%m-%d %H:%M:%S").hour<=12:
-                #         convert_to_unused=[ele for ele in ko_list if ele.生産日==ko_list[-1].生産日]
-                        
-                #         Magarin=True
-
-                #         KO_LIST=[ele for ele in KO_LIST if ele not in convert_to_unused]                
-                        
-                #         if len(KO_LIST):
-                #             KO.start_time=datetime.datetime.strptime(KO_LIST[-1].end, "%Y-%m-%d %H:%M:%S")
-                #             resetting_instances_attributes(convert_to_unused)
+                
 
 
 
             elif (eachline=='KO' and Magarin ):
                 allowable_time=elements+timedelta(minutes=440)
+
+                
+                looping_range=len(each_date_object.every_line_break_pattern['KO_break_pattern'])
+                breaks={}
+                if looping_range>0: 
+                    breaks= each_date_object.every_line_break_pattern['KO_break_pattern']
+
+                start_time=elements+timedelta(minutes=440)
+
+                KO_total_break_time = 0
+                KO_break_start=[]
+                KO_break_duration_list=[]
+                
+                for index, values in enumerate(breaks):
+
+                    break_time= breaks[f'break{index}']['break']
+                    break_duration= breaks[f'break{index}']['break_duration']
+                    KO_total_break_time+=break_duration
+                    KO_break_start.append(break_time)
+                    KO_break_duration_list.append(break_duration)
+
+                KO_line_total_time = KO_line_total_time - KO_total_break_time
+
+
+
+
+
                 ko_magarin=[]
                 randi_counter=0
 
@@ -3510,8 +4165,22 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                     before_time=allowable_time
                     after_time=before_time+timedelta(minutes=getattr(ele,'KO流量_time'))
                     allowable_time=after_time+timedelta(minutes=KO.cleaning_time)
-                    # this_linetotal_time=this_linetotal_time-getattr(ele,'FK流量_time')-FK.cleaning_time
-                    # print(f'{before_time}-->{after_time}')
+
+                    for index, (duration,break_start) in enumerate(zip(KO_break_duration_list,KO_break_start)):
+                        if before_time<break_start and allowable_time> break_start:
+                            time_to_reach_break= break_start-before_time
+                            time_to_reach_break_mins = time_to_reach_break.total_seconds() / 60
+
+                            before_time= break_start+timedelta(minutes=duration)
+                                                                            
+                            after_time=before_time+timedelta(minutes=getattr(ele,'KO流量_time'))
+                            allowable_time=after_time+timedelta(minutes=KO.cleaning_time)
+
+                            break
+                    
+                    if allowable_time>elements+timedelta(hours=23):
+                        break
+
                     setattr(ele,'slot',f'{before_time}-->{after_time}')
                     setattr(ele,'順番',counter)
                     setattr(ele,'生産日',elements.date())
@@ -3531,6 +4200,13 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,line_name,see
                             # allowable_time=allowable_time+timedelta(hours=1)
                             allowable_time=allowable_time+timedelta(minutes=80)
                             setattr(ele,'break',1)
+                                
+
+                for ele in KO_LIST:
+                    if getattr(ele,'生産日')==None:
+                        setattr(ele,'get_used',0)
+
+                KO_LIST=[ele for ele in KO_LIST if getattr(ele,'get_used')==1]
                                 
 
 

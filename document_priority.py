@@ -2502,7 +2502,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                             setattr(dle,'slot',f'{before_time}-->{after_time}')
                             setattr(dle,'順番',counter_type_KO)
                             counter_type_KO+=1
-                            setattr(dle,'生産日',after_time.date())
+                            setattr(dle,'生産日',before_time.date())
                             setattr(dle,'start',f'{before_time}')
                             setattr(dle,'end',f'{after_time}')
                             setattr(dle,'day',f'{after_time.day_name()}')
@@ -2576,7 +2576,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                         setattr(ele,'slot',f'{before_time}-->{after_time}')
                         setattr(ele,'順番',counter_type_KO)
                         counter_type_KO+=1
-                        setattr(ele,'生産日',after_time.date())
+                        setattr(ele,'生産日',before_time.date())
                         setattr(ele,'start',f'{before_time}')
                         setattr(ele,'end',f'{after_time}')
                         setattr(ele,'day',f'{after_time.day_name()}')
@@ -2674,7 +2674,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                                 setattr(dle,'slot',f'{before_time}-->{after_time}')
                                 setattr(dle,'順番',counter_type_KO)
                                 counter_type_KO+=1
-                                setattr(dle,'生産日',after_time.date())
+                                setattr(dle,'生産日',before_time.date())
                                 setattr(dle,'start',f'{before_time}')
                                 setattr(dle,'end',f'{after_time}')
                                 setattr(dle,'day',f'{after_time.day_name()}')
@@ -2742,7 +2742,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                             setattr(ele,'slot',f'{before_time}-->{after_time}')
                             setattr(ele,'順番',counter_type_KO)
                             counter_type_KO+=1
-                            setattr(ele,'生産日',after_time.date())
+                            setattr(ele,'生産日',before_time.date())
                             setattr(ele,'start',f'{before_time}')
                             setattr(ele,'end',f'{after_time}')
                             setattr(ele,'day',f'{after_time.day_name()}')
@@ -2895,7 +2895,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                                         setattr(dle,'slot',f'{before_time}-->{after_time}')
                                         setattr(dle,'順番',counter_type_KO)
                                         counter_type_KO+=1
-                                        setattr(dle,'生産日',after_time.date())
+                                        setattr(dle,'生産日',before_time.date())
                                         setattr(dle,'start',f'{before_time}')
                                         setattr(dle,'end',f'{after_time}')
                                         setattr(dle,'day',f'{after_time.day_name()}')
@@ -2974,7 +2974,7 @@ def schedule_manager(Class_Data,dates,master_sunday_data,optimizer,see_future,da
                                     setattr(ele,'slot',f'{before_time}-->{after_time}')
                                     setattr(ele,'順番',counter_type_KO)
                                     counter_type_KO+=1
-                                    setattr(ele,'生産日',after_time.date())
+                                    setattr(ele,'生産日',before_time.date())
                                     setattr(ele,'start',f'{before_time}')
                                     setattr(ele,'end',f'{after_time}')
                                     setattr(ele,'day',f'{day_name}')
